@@ -5,7 +5,7 @@ import { applyGlobalScale } from './utils/scale';
 let cleanup: (() => void) | undefined;
 
 onMounted(() => {
-  cleanup = applyGlobalScale('scalable-frame');
+  cleanup = applyGlobalScale('scalable-root');
 });
 
 onBeforeUnmount(() => {

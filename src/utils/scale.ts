@@ -1,5 +1,5 @@
 const BASE_WIDTH = 720;
-const BASE_HEIGHT = 1080;
+const BASE_HEIGHT = 1600;
 
 export function applyGlobalScale(targetId = 'scalable-root') {
   const baseRatio = BASE_WIDTH / BASE_HEIGHT;
@@ -16,8 +16,20 @@ export function applyGlobalScale(targetId = 'scalable-root') {
     const target = document.getElementById(targetId);
     if (!target) return;
 
-    target.style.transform = `translate(-50%, -50%) scale(${scale})`;
-    target.style.transformOrigin = 'center center';
+    const logicalWidth = Math.max(BASE_WIDTH, screenW / scale);
+    const logicalHeight = Math.max(BASE_HEIGHT, screenH / scale);
+    target.style.setProperty('--app-width', `${logicalWidth}px`);
+    target.style.setProperty('--app-height', `${logicalHeight}px`);
+    target.style.width = `${logicalWidth}px`;
+    target.style.height = `${logicalHeight}px`;
+    target.parentElement?.style.setProperty('--app-width', `${logicalWidth}px`);
+    target.parentElement?.style.setProperty('--app-height', `${logicalHeight}px`);
+    if (target.parentElement) {
+      target.parentElement.style.width = `${screenW}px`;
+      target.parentElement.style.height = `${screenH}px`;
+    }
+    target.style.transform = `scale(${scale})`;
+    target.style.transformOrigin = 'top left';
   };
 
   window.addEventListener('resize', resize);

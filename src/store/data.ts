@@ -1579,14 +1579,19 @@ export function exportProjectData(projectId: string) {
   );
 }
 
-export function importProjectData(rawText: string) {
+export function importProjectData(rawText: string, options?: { targetProjectId?: string }) {
   const parsed = JSON.parse(rawText) as any;
   if (!parsed || parsed.format !== 'novel-writing-tool-project' || !parsed.project) {
     throw new Error('対応していないJSON形式です。');
   }
 
   const idMap = new Map<string, string>();
+  const targetProjectId = options?.targetProjectId;
   const remap = (oldId: string) => {
+    if (targetProjectId && oldId === (parsed.project as NovelProject).id) {
+      idMap.set(oldId, targetProjectId);
+      return targetProjectId;
+    }
     if (!idMap.has(oldId)) idMap.set(oldId, createId());
     return idMap.get(oldId)!;
   };
@@ -1598,7 +1603,7 @@ export function importProjectData(rawText: string) {
   const importedProject: NovelProject = {
     ...cloneValue(sourceProject),
     id: newProjectId,
-    title: `${sourceProject.title}（読込）`,
+    title: targetProjectId ? sourceProject.title : `${sourceProject.title}（読込）`,
     genreTagId: mapId(sourceProject.genreTagId, idMap),
     genreTagIds: mapIds(sourceProject.genreTagIds, idMap),
     createdAt: now,
@@ -1779,7 +1784,28 @@ export function importProjectData(rawText: string) {
     bodyId: remap(memo.bodyId),
   }));
 
-  dataStore.projects.unshift(importedProject);
+  if (targetProjectId) {
+    const projectIndex = dataStore.projects.findIndex((project) => project.id === targetProjectId);
+    if (projectIndex < 0) throw new Error('上書き対象の作品が見つかりません。');
+
+    dataStore.characters = dataStore.characters.filter((item) => item.projectId !== targetProjectId);
+    dataStore.tags = dataStore.tags.filter((item) => item.projectId !== targetProjectId);
+    dataStore.terms = dataStore.terms.filter((item) => item.projectId !== targetProjectId);
+    dataStore.relationships = dataStore.relationships.filter((item) => item.projectId !== targetProjectId);
+    dataStore.workPlots = dataStore.workPlots.filter((item) => item.projectId !== targetProjectId);
+    dataStore.chapters = dataStore.chapters.filter((item) => item.projectId !== targetProjectId);
+    dataStore.episodes = dataStore.episodes.filter((item) => item.projectId !== targetProjectId);
+    dataStore.scenes = dataStore.scenes.filter((item) => item.projectId !== targetProjectId);
+    dataStore.characterAppearances = dataStore.characterAppearances.filter((item) => item.projectId !== targetProjectId);
+    dataStore.postStylePresets = dataStore.postStylePresets.filter((item) => item.projectId !== targetProjectId);
+    dataStore.openingIdeas = dataStore.openingIdeas.filter((item) => item.projectId !== targetProjectId);
+    dataStore.bodyDrafts = dataStore.bodyDrafts.filter((item) => item.projectId !== targetProjectId);
+    dataStore.lineMemos = dataStore.lineMemos.filter((item) => item.projectId !== targetProjectId);
+    transientStore.deletedItems = transientStore.deletedItems.filter((item) => item.projectId !== targetProjectId);
+    dataStore.projects.splice(projectIndex, 1, importedProject);
+  } else {
+    dataStore.projects.unshift(importedProject);
+  }
   if (importedWorkPlot) dataStore.workPlots.unshift(importedWorkPlot);
   dataStore.tags = [...importedTags, ...dataStore.tags];
   dataStore.characters = [...importedCharacters, ...dataStore.characters];
@@ -1795,6 +1821,12 @@ export function importProjectData(rawText: string) {
   dataStore.lineMemos = [...importedLineMemos, ...dataStore.lineMemos];
 
   dedupeProjectTags();
+  ensureWorkPlot(newProjectId);
+  ensureProjectTitleTag(newProjectId, importedProject.title);
+  ensureDefaultTags(newProjectId);
+  ensureDefaultGenreTags(newProjectId);
+  ensureDefaultCharacterProfileFields(importedProject);
+  ensureEpisodeChapters(newProjectId);
   return importedProject.id;
 }
 

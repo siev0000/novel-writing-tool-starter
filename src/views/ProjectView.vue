@@ -104,7 +104,7 @@ async function importProjectJson(event: Event) {
   const file = input.files?.[0];
   if (!file) return;
   try {
-    const importedProjectId = importProjectData(await file.text());
+    const importedProjectId = importProjectData(await file.text(), { targetProjectId: projectId });
     input.value = '';
     router.push(`/project/${importedProjectId}`);
   } catch (error) {
@@ -134,10 +134,10 @@ async function importProjectJson(event: Event) {
           <h3>JSON入出力</h3>
           <div class="button-row">
             <button type="button" class="secondary" @click="exportCurrentProject">書き出し</button>
-            <button type="button" class="secondary" @click="openImportFileDialog">読み込み</button>
+            <button type="button" class="secondary" @click="openImportFileDialog">上書き読み込み</button>
           </div>
         </div>
-        <p class="hint-text">この作品の内容をJSONで保存し、あとで新しい作品として読み込めます。</p>
+        <p class="hint-text">この作品の内容をJSONで保存し、JSONを読み込むと現在の作品内容を上書きします。</p>
         <p v-if="importError" class="hint-text error-text">{{ importError }}</p>
         <input ref="importFileInput" type="file" accept="application/json,.json" class="hidden-file-input" @change="importProjectJson" />
       </section>
