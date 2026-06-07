@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import AppHeader from '../components/AppHeader.vue';
-import { createProject, dataStore, deleteProject, exportBackup, importBackup, importProjectData, removeDeletedItem, restoreDeletedItem, transientStore } from '../store/data';
+import { createProject, dataStore, deleteProject, exportBackup, exportBackupMarkdown, importBackup, importProjectData, removeDeletedItem, restoreDeletedItem, transientStore } from '../store/data';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -94,6 +94,7 @@ async function importProjectJson(event: Event) {
       <div class="button-row">
         <button @click="addProject">＋ 新しい作品</button>
         <button class="secondary" @click="exportBackup">JSONバックアップ</button>
+        <button class="secondary" @click="exportBackupMarkdown">MDバックアップ</button>
         <button class="secondary" @click="openBackupImportFileDialog">全体JSON読み込み</button>
         <button class="secondary" @click="openProjectImportFileDialog">作品JSON読み込み</button>
       </div>

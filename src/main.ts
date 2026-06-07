@@ -1,5 +1,5 @@
 import { createApp } from 'vue';
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHashHistory } from 'vue-router';
 import App from './App.vue';
 import HomeView from './views/HomeView.vue';
 import TrashView from './views/TrashView.vue';
@@ -14,7 +14,7 @@ import EditorView from './views/EditorView.vue';
 import './styles.css';
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHashHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', component: HomeView },
     { path: '/trash', component: TrashView },

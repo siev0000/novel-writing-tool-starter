@@ -16,8 +16,8 @@ export function applyGlobalScale(targetId = 'scalable-root') {
     const target = document.getElementById(targetId);
     if (!target) return;
 
-    const logicalWidth = Math.max(BASE_WIDTH, screenW / scale);
     const logicalHeight = Math.max(BASE_HEIGHT, screenH / scale);
+    const logicalWidth = Math.min(Math.max(BASE_WIDTH, screenW / scale), logicalHeight);
     target.style.setProperty('--app-width', `${logicalWidth}px`);
     target.style.setProperty('--app-height', `${logicalHeight}px`);
     target.style.width = `${logicalWidth}px`;

@@ -1530,6 +1530,227 @@ export function exportBackup() {
   downloadBlob(blob, `novel-writing-tool-${dataStore.projects.length}works.json`);
 }
 
+function sectionLine(label: string, value?: string | number | null) {
+  if (value === undefined || value === null || value === '') return '';
+  return `- ${label}: ${value}`;
+}
+
+function listLine(label: string, values: string[]) {
+  if (!values.length) return '';
+  return `- ${label}: ${values.join('、')}`;
+}
+
+function mapLabelIds(values: string[] | undefined, labelMap: Map<string, string>) {
+  return (values ?? []).map((id) => labelMap.get(id) ?? id).filter(Boolean);
+}
+
+function renderProjectMarkdown(projectId: string) {
+  const project = getProject(projectId);
+  if (!project) return '';
+
+  const workPlot = dataStore.workPlots.find((item) => item.projectId === projectId);
+  const characters = dataStore.characters.filter((item) => item.projectId === projectId);
+  const tags = dataStore.tags.filter((item) => item.projectId === projectId);
+  const terms = dataStore.terms.filter((item) => item.projectId === projectId);
+  const relationships = dataStore.relationships.filter((item) => item.projectId === projectId);
+  const chapters = dataStore.chapters
+    .filter((item) => item.projectId === projectId)
+    .sort((a, b) => a.number - b.number);
+  const episodes = dataStore.episodes
+    .filter((item) => item.projectId === projectId)
+    .sort((a, b) => a.number - b.number);
+  const scenes = dataStore.scenes
+    .filter((item) => item.projectId === projectId)
+    .sort((a, b) => a.title.localeCompare(b.title, 'ja'));
+  const characterMap = new Map(characters.map((item) => [item.id, item.name]));
+  const tagMap = new Map(tags.map((item) => [item.id, item.name]));
+  const termMap = new Map(terms.map((item) => [item.id, item.name]));
+  const episodeMap = new Map(episodes.map((item) => [item.id, item]));
+  const chapterMap = new Map(chapters.map((item) => [item.id, item]));
+  const sceneMap = new Map(scenes.map((item) => [item.id, item]));
+
+  const lines: string[] = [];
+  lines.push(`# ${project.title}`);
+  lines.push('');
+  lines.push(...[
+    sectionLine('ジャンル', project.genre),
+    sectionLine('概要', project.summary),
+    sectionLine('メモ', project.memo),
+  ].filter(Boolean));
+
+  if (workPlot) {
+    lines.push('', '## 作品全体プロット', '');
+    lines.push(...[
+      sectionLine('テーマ', workPlot.theme),
+      sectionLine('物語の始まり', workPlot.beginning),
+      sectionLine('クライマックス', workPlot.climax),
+      sectionLine('結末', workPlot.ending),
+      sectionLine('主人公の最初の状態', workPlot.protagonistStart),
+      sectionLine('主人公の最終状態', workPlot.protagonistEnd),
+      sectionLine('メインの謎', workPlot.mainMystery),
+      sectionLine('最終的に明かす真実', workPlot.finalTruth),
+      sectionLine('主要な伏線', workPlot.foreshadowing),
+      sectionLine('メモ', workPlot.memo),
+    ].filter(Boolean));
+
+    if (workPlot.middleEvents.length) {
+      lines.push('', '### 中盤イベント', '');
+      workPlot.middleEvents
+        .sort((a, b) => a.order - b.order)
+        .forEach((event, index) => {
+          lines.push(`#### ${index + 1}. ${event.title || '無題'}`);
+          lines.push(...[
+            sectionLine('内容', event.content),
+            sectionLine('目的', event.purpose),
+            sectionLine('起きる変化', event.change),
+            listLine('関連キャラ', mapLabelIds(event.relatedCharacterIds, characterMap)),
+            listLine('関連用語', mapLabelIds(event.relatedTermIds, termMap)),
+            listLine('関連タグ', mapLabelIds(event.relatedTagIds, tagMap)),
+            sectionLine('メモ', event.memo),
+          ].filter(Boolean));
+          lines.push('');
+        });
+    }
+  }
+
+  lines.push('', '## 章・話・シーン', '');
+  chapters.forEach((chapter) => {
+    lines.push(`### 第${chapter.number}章 ${chapter.title || '無題'}`);
+    lines.push(...[
+      sectionLine('目的', chapter.purpose),
+      sectionLine('流れ', chapter.flow),
+      sectionLine('メモ', chapter.memo),
+    ].filter(Boolean));
+    lines.push('');
+
+    episodes
+      .filter((episode) => episode.chapterId === chapter.id)
+      .forEach((episode) => {
+        lines.push(`#### 第${episode.number}話 ${episode.title || '無題'}`);
+        lines.push(...[
+          listLine('登場人物', mapLabelIds(episode.characterIds, characterMap)),
+          listLine('関連タグ', mapLabelIds(episode.tagIds, tagMap)),
+          sectionLine('目的', episode.purpose),
+          sectionLine('開始状況', episode.startSituation),
+          sectionLine('起きる事件', episode.mainEvent),
+          sectionLine('明かす情報', episode.revealInfo),
+          sectionLine('隠す情報', episode.hiddenInfo),
+          sectionLine('伏線', episode.foreshadowing),
+          sectionLine('ラストの引き', episode.endingHook),
+          sectionLine('本文メモ', episode.memo),
+        ].filter(Boolean));
+        lines.push('');
+
+        scenes
+          .filter((scene) => scene.episodeId === episode.id)
+          .forEach((scene, index) => {
+            lines.push(`##### シーン${index + 1} ${scene.title || '無題'}`);
+            lines.push(...[
+              sectionLine('場所', scene.location),
+              sectionLine('時間', scene.time),
+              listLine('登場人物', mapLabelIds(scene.characterIds, characterMap)),
+              sectionLine('起きること', scene.event),
+              sectionLine('会話の目的', scene.conversationPurpose),
+              sectionLine('衝突', scene.conflict),
+              sectionLine('結果', scene.result),
+              sectionLine('次への繋ぎ', scene.nextHook),
+              listLine('関連タグ', mapLabelIds(scene.tagIds, tagMap)),
+              sectionLine('書き出し', scene.openingText),
+              sectionLine('メモ', scene.memo),
+            ].filter(Boolean));
+            lines.push('');
+          });
+      });
+  });
+
+  if (characters.length) {
+    lines.push('', '## 人物', '');
+    characters.forEach((character) => {
+      lines.push(`### ${character.name || '名前未設定'}`);
+      lines.push(...[
+        sectionLine('フリガナ', character.ruby),
+        listLine('関連タグ', mapLabelIds(character.tagIds, tagMap)),
+      ].filter(Boolean));
+      lines.push('');
+    });
+  }
+
+  if (tags.length) {
+    lines.push('', '## タグ', '');
+    tags.forEach((tag) => {
+      lines.push(`- ${tag.name} (${tag.type})`);
+    });
+  }
+
+  if (terms.length) {
+    lines.push('', '## 用語', '');
+    terms.forEach((term) => {
+      lines.push(`### ${term.name || '名前未設定'}`);
+      lines.push(...[
+        sectionLine('フリガナ', term.ruby),
+        listLine('関連タグ', mapLabelIds(term.relatedTagIds, tagMap)),
+        listLine('関連人物', mapLabelIds(term.relatedCharacterIds, characterMap)),
+      ].filter(Boolean));
+      lines.push('');
+    });
+  }
+
+  if (relationships.length) {
+    lines.push('', '## 相関', '');
+    relationships.forEach((relationship) => {
+      lines.push(`- ${characterMap.get(relationship.characterAId) ?? relationship.characterAId} → ${characterMap.get(relationship.characterBId) ?? relationship.characterBId}`);
+      lines.push(...[
+        sectionLine('関係性', relationship.relationType),
+        sectionLine('A→B印象', relationship.emotionAtoB),
+        sectionLine('B→A印象', relationship.emotionBtoA),
+        sectionLine('表向きの関係', relationship.publicRelation),
+        sectionLine('裏の関係', relationship.hiddenRelation),
+        sectionLine('変化予定', relationship.changePlan),
+        sectionLine('メモ', relationship.memo),
+        listLine('関連タグ', mapLabelIds(relationship.tagIds, tagMap)),
+      ].filter(Boolean));
+      lines.push('');
+    });
+  }
+
+  if (dataStore.bodyDrafts.some((item) => item.projectId === projectId)) {
+    lines.push('', '## 本文', '');
+    dataStore.bodyDrafts
+      .filter((item) => item.projectId === projectId)
+      .forEach((draft) => {
+        const episode = draft.episodeId ? episodeMap.get(draft.episodeId) : undefined;
+        const scene = draft.sceneId ? sceneMap.get(draft.sceneId) : undefined;
+        const chapter = episode?.chapterId ? chapterMap.get(episode.chapterId) : undefined;
+        lines.push(`### ${draft.title || '無題'}`);
+        lines.push(...[
+          sectionLine('章', chapter ? `第${chapter.number}章 ${chapter.title}` : ''),
+          sectionLine('話', episode ? `第${episode.number}話 ${episode.title}` : ''),
+          sectionLine('シーン', scene ? scene.title : ''),
+          sectionLine('状態', draft.status),
+        ].filter(Boolean));
+        if (draft.content) {
+          lines.push('', '```text', draft.content, '```');
+        }
+        lines.push('');
+      });
+  }
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+}
+
+export function exportBackupMarkdown() {
+  const lines: string[] = [];
+  lines.push(`# 小説書き出しツール バックアップ`);
+  lines.push('');
+  lines.push(`- 出力日時: ${nowIso()}`);
+  lines.push(`- 作品数: ${dataStore.projects.length}`);
+  dataStore.projects.forEach((project) => {
+    lines.push('', renderProjectMarkdown(project.id));
+  });
+  const blob = new Blob([lines.join('\n').trim() + '\n'], { type: 'text/markdown;charset=utf-8' });
+  downloadBlob(blob, `novel-writing-tool-${dataStore.projects.length}works.md`);
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1576,6 +1797,17 @@ export function exportProjectData(projectId: string) {
   downloadBlob(
     new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
     `${safeTitle}.json`
+  );
+}
+
+export function exportProjectMarkdown(projectId: string) {
+  const project = getProject(projectId);
+  if (!project) return;
+  const safeTitle = (project.title || 'project').replace(/[\\/:*?"<>|]/g, '_');
+  const markdown = renderProjectMarkdown(projectId);
+  downloadBlob(
+    new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+    `${safeTitle}.md`
   );
 }
 

@@ -6,7 +6,7 @@ import ProfileFieldsModal from '../components/ProfileFieldsModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
 import TextField from '../components/TextField.vue';
-import { dataStore, deleteCharacterProfileField, exportProjectData, getDeletedItemsForProject, getProject, importProjectData, toggleProjectGenre, updateProjectTitle } from '../store/data';
+import { dataStore, deleteCharacterProfileField, exportProjectData, exportProjectMarkdown, getDeletedItemsForProject, getProject, importProjectData, toggleProjectGenre, updateProjectTitle } from '../store/data';
 import { createId, nowIso } from '../utils/id';
 import type { ProfileFieldInputType } from '../types/models';
 
@@ -95,6 +95,9 @@ function openProjectTrash() {
 function exportCurrentProject() {
   exportProjectData(projectId);
 }
+function exportCurrentProjectMarkdown() {
+  exportProjectMarkdown(projectId);
+}
 function openImportFileDialog() {
   importError.value = '';
   importFileInput.value?.click();
@@ -132,10 +135,11 @@ async function importProjectJson(event: Event) {
       <section class="inline-panel">
         <div class="panel-heading">
           <h3>JSON入出力</h3>
-          <div class="button-row">
-            <button type="button" class="secondary" @click="exportCurrentProject">書き出し</button>
-            <button type="button" class="secondary" @click="openImportFileDialog">上書き読み込み</button>
-          </div>
+        <div class="button-row">
+          <button type="button" class="secondary" @click="exportCurrentProject">書き出し</button>
+          <button type="button" class="secondary" @click="exportCurrentProjectMarkdown">MD書き出し</button>
+          <button type="button" class="secondary" @click="openImportFileDialog">上書き読み込み</button>
+        </div>
         </div>
         <p class="hint-text">この作品の内容をJSONで保存し、JSONを読み込むと現在の作品内容を上書きします。</p>
         <p v-if="importError" class="hint-text error-text">{{ importError }}</p>
