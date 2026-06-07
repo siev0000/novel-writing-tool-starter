@@ -14,7 +14,7 @@ import EditorView from './views/EditorView.vue';
 import './styles.css';
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', component: HomeView },
     { path: '/trash', component: TrashView },
@@ -29,7 +29,5 @@ const router = createRouter({
     { path: '/project/:projectId/editor', component: EditorView },
   ],
 });
-
-router.replace('/');
 
 createApp(App).use(router).mount('#app');
