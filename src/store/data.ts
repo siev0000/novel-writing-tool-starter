@@ -287,6 +287,14 @@ type DeletedTagSnapshot = {
   projects: Array<{ id: string; genreTagId?: string; genreTagIds?: string[]; genre: string }>;
 } & DeletedSnapshotBase;
 
+type DeletedTermSnapshot = {
+  kind: 'term';
+  label: string;
+  termIndex: number;
+  term: Term;
+  openingIdeas: Array<{ id: string; usedTermIds: string[] }>;
+} & DeletedSnapshotBase;
+
 type DeletedProfileFieldSnapshot = {
   kind: 'profileField';
   label: string;
@@ -334,6 +342,7 @@ type DeletedSnapshot =
   | DeletedProjectSnapshot
   | DeletedCharacterSnapshot
   | DeletedTagSnapshot
+  | DeletedTermSnapshot
   | DeletedProfileFieldSnapshot
   | DeletedRelationshipSnapshot
   | DeletedChapterSnapshot
@@ -1257,6 +1266,31 @@ export function deleteTag(tagId: string) {
   });
 }
 
+export function deleteTerm(termId: string) {
+  const termIndex = dataStore.terms.findIndex((term) => term.id === termId);
+  const term = dataStore.terms[termIndex];
+  if (!term) return;
+
+  pushDeletedSnapshot({
+    ...createDeletedSnapshotBase(),
+    projectId: term.projectId,
+    kind: 'term',
+    label: term.name,
+    termIndex,
+    term: cloneValue(term),
+    openingIdeas: cloneValue(
+      dataStore.openingIdeas
+        .filter((idea) => idea.usedTermIds.includes(termId))
+        .map((idea) => ({ id: idea.id, usedTermIds: idea.usedTermIds }))
+    ),
+  });
+
+  dataStore.terms = dataStore.terms.filter((term) => term.id !== termId);
+  dataStore.openingIdeas.forEach((idea) => {
+    idea.usedTermIds = removeIdFromList(idea.usedTermIds, termId);
+  });
+}
+
 export function deleteCharacterProfileField(projectId: string, fieldId: string) {
   const project = getProject(projectId);
   if (!project?.characterProfileFields?.length) return;
@@ -1432,6 +1466,19 @@ function restoreTag(snapshot: DeletedTagSnapshot) {
   });
 }
 
+function restoreTerm(snapshot: DeletedTermSnapshot) {
+  dataStore.openingIdeas.forEach((idea) => {
+    const related = snapshot.openingIdeas.find((item) => item.id === idea.id);
+    if (related) idea.usedTermIds = cloneValue(related.usedTermIds);
+  });
+
+  dataStore.terms.splice(
+    Math.min(snapshot.termIndex, dataStore.terms.length),
+    0,
+    cloneValue(snapshot.term)
+  );
+}
+
 function restoreProfileField(snapshot: DeletedProfileFieldSnapshot) {
   const project = getProject(snapshot.projectId);
   if (!project) return;
@@ -1491,6 +1538,7 @@ export function restoreDeletedItem(trashId: string) {
   if (snapshot.kind === 'project') restoreProject(snapshot);
   if (snapshot.kind === 'character') restoreCharacter(snapshot);
   if (snapshot.kind === 'tag') restoreTag(snapshot);
+  if (snapshot.kind === 'term') restoreTerm(snapshot);
   if (snapshot.kind === 'profileField') restoreProfileField(snapshot);
   if (snapshot.kind === 'relationship') restoreRelationship(snapshot);
   if (snapshot.kind === 'chapter') restoreChapter(snapshot);
@@ -1544,6 +1592,92 @@ function mapLabelIds(values: string[] | undefined, labelMap: Map<string, string>
   return (values ?? []).map((id) => labelMap.get(id) ?? id).filter(Boolean);
 }
 
+function pushSection(lines: string[], title: string, sectionLines: string[]) {
+  const filtered = sectionLines.filter(Boolean);
+  if (!filtered.length) return;
+  lines.push(title);
+  lines.push(...filtered);
+  lines.push('');
+}
+
+function renderCharacterVersionMarkdown(lines: string[], title: string, character: Pick<Character, keyof CharacterVersionData> | CharacterVersionData, profileFields: CharacterProfileField[]) {
+  lines.push(title);
+  pushSection(lines, '#### 基本情報', [
+    sectionLine('名前', character.name),
+    sectionLine('フリガナ', character.ruby),
+    sectionLine('二つ名 / 異名', character.alias),
+    sectionLine('年齢', character.age),
+    sectionLine('性別', character.gender),
+    sectionLine('誕生日', character.birthday),
+    sectionLine('種族', character.race),
+    sectionLine('所属', character.affiliation),
+    sectionLine('出身地', character.origin),
+    sectionLine('身長', character.height),
+    sectionLine('体重', character.weight),
+  ]);
+  pushSection(lines, '#### 人物像', [
+    sectionLine('物語上の役割', character.role),
+    sectionLine('性格', character.personality),
+    sectionLine('目的', character.goal),
+    sectionLine('行動原理', character.behaviorPrinciple),
+    sectionLine('好きなもの', character.likes),
+    sectionLine('苦手なもの', character.dislikes),
+    sectionLine('秘密', character.secret),
+    sectionLine('メモ', character.memo),
+  ]);
+  pushSection(lines, '#### 能力', [
+    sectionLine('特技', character.battleStyle),
+    sectionLine('武器', character.weapon),
+    sectionLine('魔法 / 能力', character.magic),
+    sectionLine('技能', character.skill),
+    sectionLine('弱点', character.weakness),
+  ]);
+  pushSection(lines, '#### 話し方', [
+    sectionLine('一人称', character.firstPerson),
+    sectionLine('二人称', character.secondPerson),
+    sectionLine('口調', character.speechStyle),
+  ]);
+  pushSection(lines, '#### 外見', [
+    sectionLine('外見概要', character.appearance),
+    sectionLine('髪型', character.hairStyle),
+    sectionLine('髪色', character.hairColor),
+    sectionLine('目の色', character.eyeColor),
+    sectionLine('体格', character.build),
+    sectionLine('服装', character.clothing),
+    sectionLine('装備', character.equipment),
+  ]);
+  const customFields = (character.customFields ?? [])
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((field) => sectionLine(field.label, field.value));
+  const configuredCustomFields = profileFields
+    .filter((field) => field.source === 'user')
+    .map((field) => {
+      const value = (character.customFields ?? []).find((item) => item.templateId === field.id || item.label === field.label)?.value ?? '';
+      return sectionLine(field.label, value);
+    });
+  pushSection(lines, '#### 追加項目', [...configuredCustomFields, ...customFields]);
+}
+
+function renderTermVersionMarkdown(lines: string[], title: string, term: Pick<Term, keyof TermVersionData> | TermVersionData, tagMap: Map<string, string>, characterMap: Map<string, string>, episodeMap: Map<string, Episode>, sceneMap: Map<string, Scene>) {
+  lines.push(title);
+  lines.push(...[
+    sectionLine('名称', term.name),
+    sectionLine('フリガナ', term.ruby),
+    sectionLine('分類', term.category),
+    sectionLine('短い説明', term.shortDescription),
+    sectionLine('説明', term.description),
+    sectionLine('公開情報', term.publicInfo),
+    sectionLine('ネタバレ情報', term.spoilerInfo),
+    sectionLine('初登場話', term.firstEpisodeId ? episodeMap.get(term.firstEpisodeId)?.title || term.firstEpisodeId : ''),
+    sectionLine('初登場シーン', term.firstSceneId ? sceneMap.get(term.firstSceneId)?.title || term.firstSceneId : ''),
+    listLine('関連人物', mapLabelIds(term.relatedCharacterIds, characterMap)),
+    listLine('関連タグ', mapLabelIds(term.relatedTagIds, tagMap)),
+    sectionLine('メモ', term.memo),
+  ].filter(Boolean));
+  lines.push('');
+}
+
 function renderProjectMarkdown(projectId: string) {
   const project = getProject(projectId);
   if (!project) return '';
@@ -1568,6 +1702,9 @@ function renderProjectMarkdown(projectId: string) {
   const episodeMap = new Map(episodes.map((item) => [item.id, item]));
   const chapterMap = new Map(chapters.map((item) => [item.id, item]));
   const sceneMap = new Map(scenes.map((item) => [item.id, item]));
+  const projectProfileFields = (project.characterProfileFields ?? [])
+    .slice()
+    .sort((a, b) => a.order - b.order);
 
   const lines: string[] = [];
   lines.push(`# ${project.title}`);
@@ -1668,17 +1805,38 @@ function renderProjectMarkdown(projectId: string) {
     characters.forEach((character) => {
       lines.push(`### ${character.name || '名前未設定'}`);
       lines.push(...[
-        sectionLine('フリガナ', character.ruby),
         listLine('関連タグ', mapLabelIds(character.tagIds, tagMap)),
+        sectionLine('作成日時', character.createdAt),
+        sectionLine('更新日時', character.updatedAt),
       ].filter(Boolean));
       lines.push('');
+      renderCharacterVersionMarkdown(lines, '#### 現在の版', character, projectProfileFields);
+      if (character.versions?.length) {
+        character.versions.forEach((version, index) => {
+          renderCharacterVersionMarkdown(lines, `#### バージョン ${index + 1}`, version, projectProfileFields);
+          lines.push(...[
+            sectionLine('作成日時', version.createdAt),
+            sectionLine('更新日時', version.updatedAt),
+          ].filter(Boolean));
+          lines.push('');
+        });
+      }
     });
   }
 
   if (tags.length) {
     lines.push('', '## タグ', '');
     tags.forEach((tag) => {
-      lines.push(`- ${tag.name} (${tag.type})`);
+      lines.push(`### ${tag.name}`);
+      lines.push(...[
+        sectionLine('分類', tag.type),
+        sectionLine('カテゴリ', tag.category),
+        sectionLine('色', tag.color),
+        sectionLine('状態', tag.status),
+        sectionLine('作成元', tag.source),
+        sectionLine('メモ', tag.memo),
+      ].filter(Boolean));
+      lines.push('');
     });
   }
 
@@ -1687,11 +1845,21 @@ function renderProjectMarkdown(projectId: string) {
     terms.forEach((term) => {
       lines.push(`### ${term.name || '名前未設定'}`);
       lines.push(...[
-        sectionLine('フリガナ', term.ruby),
-        listLine('関連タグ', mapLabelIds(term.relatedTagIds, tagMap)),
-        listLine('関連人物', mapLabelIds(term.relatedCharacterIds, characterMap)),
+        sectionLine('作成日時', term.createdAt),
+        sectionLine('更新日時', term.updatedAt),
       ].filter(Boolean));
       lines.push('');
+      renderTermVersionMarkdown(lines, '#### 現在の版', term, tagMap, characterMap, episodeMap, sceneMap);
+      if (term.versions?.length) {
+        term.versions.forEach((version, index) => {
+          renderTermVersionMarkdown(lines, `#### バージョン ${index + 1}`, version, tagMap, characterMap, episodeMap, sceneMap);
+          lines.push(...[
+            sectionLine('作成日時', version.createdAt),
+            sectionLine('更新日時', version.updatedAt),
+          ].filter(Boolean));
+          lines.push('');
+        });
+      }
     });
   }
 
@@ -1727,12 +1895,49 @@ function renderProjectMarkdown(projectId: string) {
           sectionLine('話', episode ? `第${episode.number}話 ${episode.title}` : ''),
           sectionLine('シーン', scene ? scene.title : ''),
           sectionLine('状態', draft.status),
+          sectionLine('投稿設定', draft.postStylePresetId ? (dataStore.postStylePresets.find((item) => item.id === draft.postStylePresetId)?.name ?? draft.postStylePresetId) : ''),
+          sectionLine('作成日時', draft.createdAt),
+          sectionLine('更新日時', draft.updatedAt),
         ].filter(Boolean));
         if (draft.content) {
           lines.push('', '```text', draft.content, '```');
         }
+        const lineMemos = dataStore.lineMemos
+          .filter((memo) => memo.projectId === projectId && memo.bodyId === draft.id)
+          .sort((a, b) => a.lineNumber - b.lineNumber);
+        if (lineMemos.length) {
+          lines.push('', '#### 行間メモ', '');
+          lineMemos.forEach((memo) => {
+            lines.push(`- ${memo.lineNumber}行目 [${memo.memoType}] ${memo.content}`);
+            lines.push(...[
+              sectionLine('対象文', memo.targetText),
+              sectionLine('前文', memo.beforeText),
+              sectionLine('後文', memo.afterText),
+              sectionLine('更新日時', memo.updatedAt),
+            ].filter(Boolean));
+          });
+        }
         lines.push('');
       });
+  }
+
+  const presets = dataStore.postStylePresets.filter((item) => item.projectId === projectId);
+  if (presets.length) {
+    lines.push('', '## 投稿設定', '');
+    presets.forEach((preset) => {
+      lines.push(`### ${preset.name}`);
+      lines.push(...[
+        sectionLine('投稿先', preset.platform),
+        sectionLine('改行レベル', preset.lineBreakLevel),
+        sectionLine('文の長さ', preset.sentenceLength),
+        sectionLine('会話量', preset.dialogueAmount),
+        sectionLine('地の文量', preset.descriptionAmount),
+        sectionLine('引きの強さ', preset.hookStrength),
+        sectionLine('ルビ有効', preset.rubyEnabled ? 'あり' : 'なし'),
+        sectionLine('メモ', preset.memo),
+      ].filter(Boolean));
+      lines.push('');
+    });
   }
 
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';

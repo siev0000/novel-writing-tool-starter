@@ -9,6 +9,7 @@ function itemTypeLabel(kind: string) {
   if (kind === 'project') return '作品';
   if (kind === 'character') return '人物';
   if (kind === 'tag') return 'タグ';
+  if (kind === 'term') return '用語';
   if (kind === 'profileField') return 'プロフィール項目';
   if (kind === 'relationship') return '相関';
   if (kind === 'chapter') return '章';

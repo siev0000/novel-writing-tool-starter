@@ -81,7 +81,13 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 button.secondary { background: #55646f; }
 button.danger { background: var(--danger); }
 button.ghost {
+  background: #e7ede9;
+  color: var(--accent-dark);
+  border: 1px solid #9fb2ac;
+}
+.app-header button.ghost {
   background: rgba(255,255,255,.16);
+  color: #f8f8f2;
   border: 1px solid rgba(255,255,255,.25);
 }
 input, textarea, select {
@@ -877,8 +883,8 @@ h1 { margin: 0; font-size: 22px; }
 }
 .profile-modal {
   position: relative;
-  width: min(760px, 100%);
-  height: min(760px, calc(100vh - 36px));
+  width: min(calc(100vw - 16px), 1200px);
+  height: calc(100vh - 16px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -937,10 +943,12 @@ h1 { margin: 0; font-size: 22px; }
 }
 .profile-modal-row {
   display: grid;
-  grid-template-columns: 22px auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
+  position: relative;
   padding: 10px;
+  padding-left: 38px;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -954,9 +962,16 @@ h1 { margin: 0; font-size: 22px; }
   box-shadow: inset 0 0 0 1px #73a99d;
 }
 .profile-drag-handle {
-  min-width: 40px;
-  padding: 8px 10px;
-  background: #eef5f1;
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  min-width: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
   color: var(--accent-dark);
   cursor: grab;
 }
@@ -975,16 +990,79 @@ h1 { margin: 0; font-size: 22px; }
   font-size: 18px;
 }
 .profile-modal-grid {
-  grid-template-columns: auto minmax(0, 1fr) minmax(200px, .9fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
-.profile-modal-config {
-  display: grid;
-  gap: 8px;
+
+@media (max-width: 640px) {
+  .modal-backdrop {
+    padding: 8px;
+  }
+  .profile-modal {
+    width: 100%;
+    height: calc(100vh - 16px);
+  }
+  .profile-field-modal-list {
+    padding: 0 0 12px 0;
+  }
+  .modal-header,
+  .header-actions-inline {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .header-actions-inline {
+    width: 100%;
+  }
+  .header-actions-inline button,
+  .profile-modal-footer button,
+  .add-profile-field-modal .button-row button {
+    width: 100%;
+  }
+  .profile-modal-footer {
+    position: static;
+    right: auto;
+    left: auto;
+    bottom: auto;
+    padding-top: 8px;
+    box-shadow: none;
+  }
+  .profile-modal .button-row,
+  .add-profile-field-modal .button-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .profile-modal-row,
+  .profile-modal-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .profile-drag-handle {
+    top: 10px;
+    transform: none;
+    width: 22px;
+  }
+  .profile-modal-name strong {
+    white-space: normal;
+  }
+  .profile-modal-config {
+    gap: 4px;
+  }
 }
-.profile-modal-config small {
-  color: var(--muted);
-  font-size: 18px;
-  font-weight: 700;
+
+@media (max-width: 960px) {
+  .profile-modal-footer,
+  .profile-modal .button-row,
+  .add-profile-field-modal .button-row,
+  .selection-modal .button-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .profile-modal-footer button,
+  .add-profile-field-modal .button-row button,
+  .modal-panel .button-row button {
+    width: 100%;
+    min-width: 0;
+  }
 }
 .scene-detail { background: #eef5f1; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
 .inline-panel {
@@ -1188,9 +1266,9 @@ h1 { margin: 0; font-size: 22px; }
 }
 .modal-panel {
   width: min(720px, 100%);
-  max-height: min(760px, calc(100vh - 36px));
+  max-height: min(1000px, calc(100vh - 36px));
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* grid-template-rows: auto auto minmax(0, 1fr); */
   gap: 12px;
   padding: 14px;
   background: var(--panel);
@@ -1399,4 +1477,3 @@ h1 { margin: 0; font-size: 22px; }
 .modal-item:focus-visible .item-tooltip {
   display: block;
 }
-

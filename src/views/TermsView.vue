@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import CharacterNameModal from '../components/CharacterNameModal.vue';
+import ConfirmModal from '../components/ConfirmModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
 import TextField from '../components/TextField.vue';
@@ -10,6 +11,7 @@ import {
   activateTermVersion,
   createTermVersion,
   dataStore,
+  deleteTerm,
   ensureTermVersions,
   getTermActiveVersion,
   isTermVersionChanged,
@@ -26,6 +28,7 @@ const termNameModalOpen = ref(false);
 const termNameError = ref('');
 const tagModalOpen = ref(false);
 const tagRemoveModalOpen = ref(false);
+const termDeleteTargetId = ref('');
 const terms = computed(() => {
   return dataStore.terms.filter((t) => {
     const matchProject = t.projectId === projectId;
@@ -79,6 +82,7 @@ watch(selectedId, () => {
   termNameError.value = '';
   tagModalOpen.value = false;
   tagRemoveModalOpen.value = false;
+  termDeleteTargetId.value = '';
 });
 
 watch(
@@ -166,6 +170,26 @@ function updateSelectedField<K extends keyof Term>(key: K, value: Term[K]) {
   selected.value.updatedAt = nowIso();
   syncTermActiveVersion(selected.value);
 }
+
+function requestDeleteSelectedTerm() {
+  if (!selected.value) return;
+  termDeleteTargetId.value = selected.value.id;
+}
+
+function confirmDeleteSelectedTerm() {
+  if (!termDeleteTargetId.value) return;
+  const currentTerms = terms.value;
+  const currentIndex = currentTerms.findIndex((item) => item.id === termDeleteTargetId.value);
+  deleteTerm(termDeleteTargetId.value);
+  termDeleteTargetId.value = '';
+  const nextTerms = terms.value;
+  if (!nextTerms.length) {
+    selectedId.value = '';
+    return;
+  }
+  const nextIndex = Math.min(currentIndex, nextTerms.length - 1);
+  selectedId.value = nextTerms[Math.max(nextIndex, 0)].id;
+}
 </script>
 
 <template>
@@ -211,6 +235,7 @@ function updateSelectedField<K extends keyof Term>(key: K, value: Term[K]) {
           </div>
           <div class="version-actions">
             <button type="button" class="secondary" @click="addVersion">＋</button>
+            <button type="button" class="danger" @click="requestDeleteSelectedTerm">削除</button>
           </div>
         </div>
         <section class="name-display-row compact-name-row">
@@ -284,6 +309,14 @@ function updateSelectedField<K extends keyof Term>(key: K, value: Term[K]) {
       empty-text="削除できるタグがありません。"
       @close="tagRemoveModalOpen = false"
       @select="removeTag"
+    />
+    <ConfirmModal
+      :open="Boolean(termDeleteTargetId)"
+      title="用語を削除"
+      :message="`「${selected?.name || ''}」を削除します。削除履歴から元に戻せます。`"
+      confirm-label="用語を削除"
+      @close="termDeleteTargetId = ''"
+      @confirm="confirmDeleteSelectedTerm"
     />
   </main>
 </template>

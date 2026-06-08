@@ -161,10 +161,10 @@ function toggleSection(section: string) {
                 <button type="button" class="profile-drag-handle ghost" aria-label="ドラッグで並び替え">⋮⋮</button>
                 <div class="profile-modal-name">
                   <strong>{{ field.label }}</strong>
-                  <small>{{ fieldSectionLabel(field) }}</small>
-                </div>
-                <div class="profile-modal-config">
-                  <small>{{ fieldTypeLabel(field.inputType) }}</small>
+                  <small>
+                    {{ fieldSectionLabel(field) }}
+                    <template v-if="fieldTypeLabel(field.inputType)"> / {{ fieldTypeLabel(field.inputType) }}</template>
+                  </small>
                   <small v-if="fieldOptionsLabel(field)">{{ fieldOptionsLabel(field) }}</small>
                 </div>
                 <button v-if="field.source === 'user'" type="button" class="secondary" @click="editTargetId = field.id">変更</button>
