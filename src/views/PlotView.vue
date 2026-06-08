@@ -6,7 +6,7 @@ import ConfirmModal from '../components/ConfirmModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
 import TextField from '../components/TextField.vue';
-import { dataStore, deleteChapter, deleteEpisode, deleteScene, ensureEpisodeChapters, ensureWorkPlot, getWorkPlot } from '../store/data';
+import { dataStore, deleteChapter, deleteEpisode, deleteScene, ensureEpisodeChapters, ensureWorkPlot, getProjectNavigatorSelection, getWorkPlot, setProjectNavigatorSelection, transientStore } from '../store/data';
 import { createId } from '../utils/id';
 import type { Chapter, Episode, MiddleEvent, Scene } from '../types/models';
 
@@ -30,6 +30,7 @@ const episodeTagRemoveModalOpen = ref(false);
 const sceneCharacterAddModalOpen = ref(false);
 const sceneCharacterRemoveModalOpen = ref(false);
 const deleteTarget = ref<{ kind: 'chapter' | 'episode' | 'scene'; id: string; label: string } | null>(null);
+getProjectNavigatorSelection(projectId);
 
 const workPlot = computed(() => getWorkPlot(projectId) ?? initialWorkPlot);
 const chapters = computed(() => dataStore.chapters.filter((chapter) => chapter.projectId === projectId).sort((a, b) => a.number - b.number));
@@ -107,6 +108,36 @@ watch(
     }
   },
   { immediate: true }
+);
+
+watch(
+  [selectedKind, selectedChapterId, selectedEpisodeId, selectedSceneId],
+  ([kind, chapterId, episodeId, sceneId]) => {
+    setProjectNavigatorSelection(projectId, { kind, chapterId, episodeId, sceneId });
+  }
+);
+
+watch(
+  () => transientStore.navigatorSelections[projectId],
+  (selection) => {
+    if (!selection) return;
+    if (selection.kind === 'workPlot' && selectedKind.value !== 'workPlot') {
+      selectWorkPlot();
+      return;
+    }
+    if (selection.kind === 'chapter' && selection.chapterId && selection.chapterId !== selectedChapterId.value) {
+      selectChapter(selection.chapterId);
+      return;
+    }
+    if (selection.kind === 'episode' && selection.episodeId && selection.episodeId !== selectedEpisodeId.value) {
+      selectEpisode(selection.episodeId);
+      return;
+    }
+    if (selection.kind === 'scene' && selection.sceneId && selection.sceneId !== selectedSceneId.value) {
+      selectScene(selection.sceneId);
+    }
+  },
+  { deep: true, immediate: true }
 );
 
 watch(

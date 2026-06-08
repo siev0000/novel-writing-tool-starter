@@ -1,221 +1,690 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import { useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
-import SelectionModal from '../components/SelectionModal.vue';
-import type { SelectionModalItem } from '../components/SelectionModal.vue';
 import TextField from '../components/TextField.vue';
-import { dataStore, downloadBlob } from '../store/data';
+import { dataStore, downloadBlob, ensureEpisodeChapters, getProjectNavigatorSelection, setProjectNavigatorSelection, transientStore } from '../store/data';
 import { createId, nowIso } from '../utils/id';
-import { resizeTextarea } from '../utils/textarea';
-import type { BodyDraft, LineMemo, MemoType } from '../types/models';
+import type { BodyDraft, Chapter, Episode, LineMemo, MemoType, Scene } from '../types/models';
+
+type EditorSelectionKind = 'chapter' | 'episode' | 'scene';
 
 const projectId = useRoute().params.projectId as string;
 const route = useRoute();
-const selectedBodyId = ref('');
-const selectedMemo = ref<LineMemo | null>(null);
-const episodeModalOpen = ref(false);
+
+ensureEpisodeChapters(projectId);
+
+const selectedKind = ref<EditorSelectionKind>('scene');
+const selectedChapterId = ref('');
+const selectedEpisodeId = ref('');
+const selectedSceneId = ref('');
+const collapsedChapterIds = ref<string[]>([]);
+const collapsedEpisodeIds = ref<string[]>([]);
 const bodyTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const lineViewRef = ref<HTMLDivElement | null>(null);
 const newMemoLine = ref(1);
 const newMemoType = ref<MemoType>('revision');
 const newMemoContent = ref('');
+const editorPanelCollapsed = ref(false);
+const editorTab = ref<'info' | 'memo' | 'export'>('info');
+const memoPopover = ref<{ memo: LineMemo; top: number } | null>(null);
+const memoPopoverPinned = ref(false);
+const visualLineCounts = ref<number[]>([]);
+getProjectNavigatorSelection(projectId);
 
-const bodies = computed(() => dataStore.bodyDrafts.filter((b) => b.projectId === projectId));
-const body = computed(() => dataStore.bodyDrafts.find((b) => b.id === selectedBodyId.value));
-const episodes = computed(() => dataStore.episodes
-  .filter((item) => item.projectId === projectId)
-  .sort((a, b) => a.number - b.number));
-const episodeMap = computed(() => new Map(episodes.value.map((item) => [item.id, item])));
-const episodeItems = computed<SelectionModalItem[]>(() => episodes.value.map((episode) => ({
-  id: episode.id,
-  label: `第${episode.number}話`,
-  meta: episode.title || '無題',
-  category: '話プロット',
-})));
-const lines = computed(() => (body.value?.content ?? '').split('\n'));
-const memos = computed(() => dataStore.lineMemos.filter((m) => m.projectId === projectId && m.bodyId === selectedBodyId.value));
-const charCount = computed(() => body.value?.content.length ?? 0);
-const blankLineCount = computed(() => lines.value.filter((l) => !l.trim()).length);
-const dialogueCount = computed(() => lines.value.filter((l) => l.trim().startsWith('「')).length);
-const selectedEpisodeLabel = computed(() => {
-  if (!body.value?.episodeId) return '未指定';
-  const episode = episodeMap.value.get(body.value.episodeId);
-  if (!episode) return '未指定';
-  return `第${episode.number}話 ${episode.title || ''}`.trim();
+const chapters = computed(() => dataStore.chapters.filter((chapter) => chapter.projectId === projectId).sort((a, b) => a.number - b.number));
+const episodes = computed(() => dataStore.episodes.filter((episode) => episode.projectId === projectId).sort((a, b) => a.number - b.number));
+const scenes = computed(() => dataStore.scenes.filter((scene) => scene.projectId === projectId));
+const bodyDrafts = computed(() => dataStore.bodyDrafts.filter((draft) => draft.projectId === projectId));
+
+const selectedChapter = computed(() => chapters.value.find((chapter) => chapter.id === selectedChapterId.value));
+const selectedEpisode = computed(() => episodes.value.find((episode) => episode.id === selectedEpisodeId.value));
+const selectedScene = computed(() => scenes.value.find((scene) => scene.id === selectedSceneId.value));
+const episodeScenes = computed(() => scenes.value.filter((scene) => scene.episodeId === selectedEpisodeId.value));
+
+const selectedSceneBody = computed(() => {
+  if (!selectedScene.value) return undefined;
+  return bodyDrafts.value.find((draft) => draft.sceneId === selectedScene.value?.id);
 });
 
-function syncBodyTextareaHeight() {
-  resizeTextarea(bodyTextareaRef.value, 15);
-}
+const selectedEpisodeBody = computed(() => {
+  if (!selectedEpisode.value) return undefined;
+  return bodyDrafts.value.find((draft) => draft.episodeId === selectedEpisode.value?.id && !draft.sceneId);
+});
 
-watchEffect(() => {
-  const bodyId = route.query.bodyId;
-  if (typeof bodyId === 'string' && dataStore.bodyDrafts.some((draft) => draft.id === bodyId)) {
-    selectedBodyId.value = bodyId;
+const displayedContent = computed(() => {
+  if (selectedKind.value === 'scene') return selectedSceneBody.value?.content ?? '';
+  if (!selectedEpisode.value) return '';
+
+  const sceneContents = episodeScenes.value
+    .map((scene) => bodyDrafts.value.find((draft) => draft.sceneId === scene.id)?.content?.trim() ?? '')
+    .filter(Boolean);
+
+  if (sceneContents.length) return sceneContents.join('\n\n');
+  return selectedEpisodeBody.value?.content ?? '';
+});
+
+const displayedLines = computed(() => displayedContent.value.split('\n'));
+const charCount = computed(() => displayedContent.value.length);
+const blankLineCount = computed(() => displayedLines.value.filter((line) => !line.trim()).length);
+const dialogueCount = computed(() => displayedLines.value.filter((line) => line.trim().startsWith('「')).length);
+const currentBody = computed(() => (selectedKind.value === 'scene' ? selectedSceneBody.value : selectedEpisodeBody.value));
+const memos = computed(() => {
+  if (selectedKind.value !== 'scene' || !currentBody.value) return [];
+  return dataStore.lineMemos.filter((memo) => memo.projectId === projectId && memo.bodyId === currentBody.value?.id);
+});
+const selectedTargetLabel = computed(() => {
+  if (selectedKind.value === 'chapter' && selectedChapter.value) {
+    return `第${selectedChapter.value.number}章 ${selectedChapter.value.title}`.trim();
   }
+  if (selectedKind.value === 'scene' && selectedScene.value && selectedEpisode.value) {
+    return `第${selectedEpisode.value.number}話 / ${selectedScene.value.title}`;
+  }
+  if (selectedEpisode.value) {
+    return `第${selectedEpisode.value.number}話 ${selectedEpisode.value.title}`.trim();
+  }
+  return '未選択';
+});
+const selectedModeLabel = computed(() => {
+  if (selectedKind.value === 'chapter') return '章選択';
+  return selectedKind.value === 'scene' ? 'シーン本文' : '話本文（シーン結合表示）';
 });
 
-watch(
-  () => body.value?.content,
-  async () => {
-    await nextTick();
-    syncBodyTextareaHeight();
-  },
-  { immediate: true }
-);
-
-watch(
-  () => body.value?.id,
-  async () => {
-    await nextTick();
-    syncBodyTextareaHeight();
-  },
-  { immediate: true }
-);
-
-onMounted(() => {
-  window.addEventListener('resize', syncBodyTextareaHeight);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', syncBodyTextareaHeight);
-});
-
-function addBody() {
-  episodeModalOpen.value = true;
+function syncLineViewScroll() {
+  if (!bodyTextareaRef.value || !lineViewRef.value) return;
+  lineViewRef.value.scrollTop = bodyTextareaRef.value.scrollTop;
 }
-function createBodyForEpisode(item: SelectionModalItem) {
+
+function measureWrappedLineCounts() {
+  const textarea = bodyTextareaRef.value;
+  if (!textarea) {
+    visualLineCounts.value = displayedLines.value.map(() => 1);
+    return;
+  }
+
+  const style = window.getComputedStyle(textarea);
+  const font = [
+    style.fontStyle,
+    style.fontVariant,
+    style.fontWeight,
+    style.fontSize,
+    style.fontFamily,
+  ].join(' ');
+  const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+  const paddingRight = Number.parseFloat(style.paddingRight) || 0;
+  const availableWidth = Math.max(1, textarea.clientWidth - paddingLeft - paddingRight);
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) {
+    visualLineCounts.value = displayedLines.value.map(() => 1);
+    return;
+  }
+  context.font = font;
+
+  visualLineCounts.value = displayedLines.value.map((line) => {
+    if (!line) return 1;
+    let rowCount = 1;
+    let currentWidth = 0;
+    for (const char of Array.from(line)) {
+      const charWidth = context.measureText(char).width;
+      if (currentWidth + charWidth > availableWidth) {
+        rowCount += 1;
+        currentWidth = charWidth;
+      } else {
+        currentWidth += charWidth;
+      }
+    }
+    return Math.max(1, rowCount);
+  });
+}
+
+function isChapterCollapsed(chapterId: string) {
+  return collapsedChapterIds.value.includes(chapterId);
+}
+
+function isEpisodeCollapsed(episodeId: string) {
+  return collapsedEpisodeIds.value.includes(episodeId);
+}
+
+function toggleChapterCollapse(chapterId: string) {
+  collapsedChapterIds.value = isChapterCollapsed(chapterId)
+    ? collapsedChapterIds.value.filter((id) => id !== chapterId)
+    : [...collapsedChapterIds.value, chapterId];
+}
+
+function toggleEpisodeCollapse(episodeId: string) {
+  collapsedEpisodeIds.value = isEpisodeCollapsed(episodeId)
+    ? collapsedEpisodeIds.value.filter((id) => id !== episodeId)
+    : [...collapsedEpisodeIds.value, episodeId];
+}
+
+function selectChapter(chapterId: string) {
+  selectedKind.value = 'chapter';
+  selectedChapterId.value = chapterId;
+  selectedEpisodeId.value = '';
+  selectedSceneId.value = '';
+  collapsedChapterIds.value = collapsedChapterIds.value.filter((id) => id !== chapterId);
+  clearMemoPopover();
+}
+
+function selectEpisode(episodeId: string) {
+  const episode = episodes.value.find((item) => item.id === episodeId);
+  if (!episode) return;
+  selectedKind.value = 'episode';
+  selectedEpisodeId.value = episode.id;
+  selectedSceneId.value = '';
+  selectedChapterId.value = episode.chapterId ?? '';
+  collapsedChapterIds.value = collapsedChapterIds.value.filter((id) => id !== selectedChapterId.value);
+  collapsedEpisodeIds.value = collapsedEpisodeIds.value.filter((id) => id !== episode.id);
+  clearMemoPopover();
+  editorPanelCollapsed.value = false;
+  editorTab.value = 'info';
+}
+
+function selectScene(sceneId: string) {
+  const scene = scenes.value.find((item) => item.id === sceneId);
+  if (!scene) return;
+  const episode = episodes.value.find((item) => item.id === scene.episodeId);
+  if (!episode) return;
+  selectedKind.value = 'scene';
+  selectedSceneId.value = scene.id;
+  selectedEpisodeId.value = episode.id;
+  selectedChapterId.value = episode.chapterId ?? '';
+  collapsedChapterIds.value = collapsedChapterIds.value.filter((id) => id !== selectedChapterId.value);
+  collapsedEpisodeIds.value = collapsedEpisodeIds.value.filter((id) => id !== episode.id);
+  clearMemoPopover();
+  editorPanelCollapsed.value = false;
+  editorTab.value = 'memo';
+}
+
+function addChapter() {
+  const chapter: Chapter = {
+    id: createId(),
+    projectId,
+    number: chapters.value.length + 1,
+    title: `第${chapters.value.length + 1}章`,
+    purpose: '',
+    flow: '',
+    memo: '',
+  };
+  dataStore.chapters.push(chapter);
+  selectedChapterId.value = chapter.id;
+  collapsedChapterIds.value = collapsedChapterIds.value.filter((id) => id !== chapter.id);
+}
+
+function addEpisode(chapterId: string) {
+  const chapter = chapters.value.find((item) => item.id === chapterId);
+  if (!chapter) return;
+  const nextNumber = episodes.value.filter((item) => item.chapterId === chapterId).length + 1;
+  const episode: Episode = {
+    id: createId(),
+    projectId,
+    chapterId,
+    number: nextNumber,
+    title: `第${nextNumber}話`,
+    purpose: '',
+    startSituation: '',
+    mainEvent: '',
+    revealInfo: '',
+    hiddenInfo: '',
+    foreshadowing: '',
+    endingHook: '',
+    characterIds: [],
+    tagIds: [],
+    memo: '',
+  };
+  dataStore.episodes.push(episode);
+  selectEpisode(episode.id);
+  collapsedChapterIds.value = collapsedChapterIds.value.filter((id) => id !== chapter.id);
+}
+
+function addScene(episodeId: string) {
+  const episode = episodes.value.find((item) => item.id === episodeId);
+  if (!episode) return;
+  const sceneCount = scenes.value.filter((item) => item.episodeId === episodeId).length + 1;
+  const scene: Scene = {
+    id: createId(),
+    projectId,
+    episodeId,
+    title: `シーン${sceneCount}`,
+    location: '',
+    time: '',
+    event: '',
+    conversationPurpose: '',
+    conflict: '',
+    result: '',
+    nextHook: '',
+    openingText: '',
+    characterIds: [],
+    tagIds: [],
+    memo: '',
+  };
+  dataStore.scenes.push(scene);
+  selectScene(scene.id);
+  collapsedEpisodeIds.value = collapsedEpisodeIds.value.filter((id) => id !== episode.id);
+}
+
+function ensureSceneBodyDraft(scene: Scene) {
+  const existing = dataStore.bodyDrafts.find((draft) => draft.projectId === projectId && draft.sceneId === scene.id);
+  if (existing) return existing;
+
   const now = nowIso();
-  const episode = episodes.value.find((current) => current.id === item.id);
+  const episode = episodes.value.find((item) => item.id === scene.episodeId);
   const draft: BodyDraft = {
     id: createId(),
     projectId,
-    episodeId: episode?.id,
-    title: episode ? `第${episode.number}話 本文` : '新しい本文',
+    episodeId: scene.episodeId,
+    sceneId: scene.id,
+    title: episode ? `第${episode.number}話 ${scene.title}` : scene.title,
     content: '',
     status: 'draft',
     createdAt: now,
     updatedAt: now,
   };
   dataStore.bodyDrafts.unshift(draft);
-  selectedBodyId.value = draft.id;
-  episodeModalOpen.value = false;
+  return draft;
 }
-function updateBodyEpisode(item: SelectionModalItem) {
-  if (!body.value) return;
-  const episode = episodes.value.find((current) => current.id === item.id);
-  body.value.episodeId = episode?.id;
-  if (episode && (!body.value.title || body.value.title === '新しい本文')) {
-    body.value.title = `第${episode.number}話 本文`;
-  }
-  body.value.updatedAt = nowIso();
-  episodeModalOpen.value = false;
+
+function updateSceneContent(value: string) {
+  if (selectedKind.value !== 'scene' || !selectedScene.value) return;
+  const draft = ensureSceneBodyDraft(selectedScene.value);
+  draft.content = value;
+  draft.updatedAt = nowIso();
 }
-function updateContent(value: string) {
-  if (!body.value) return;
-  body.value.content = value;
-  body.value.updatedAt = nowIso();
-}
+
 function memoForLine(lineNumber: number) {
-  return memos.value.find((m) => m.lineNumber === lineNumber);
+  return memos.value.find((memo) => memo.lineNumber === lineNumber);
 }
+
 function addMemo() {
-  if (!body.value || !newMemoContent.value.trim()) return;
+  if (selectedKind.value !== 'scene' || !selectedScene.value || !newMemoContent.value.trim()) return;
+  const draft = ensureSceneBodyDraft(selectedScene.value);
   const index = Math.max(0, newMemoLine.value - 1);
   const memo: LineMemo = {
-    id: createId(), projectId, bodyId: body.value.id, blockId: `line-${newMemoLine.value}`, lineNumber: newMemoLine.value,
-    targetText: lines.value[index] ?? '', beforeText: lines.value[index - 1] ?? '', afterText: lines.value[index + 1] ?? '',
-    memoType: newMemoType.value, content: newMemoContent.value, createdAt: nowIso(), updatedAt: nowIso(),
+    id: createId(),
+    projectId,
+    episodeId: draft.episodeId,
+    sceneId: draft.sceneId,
+    bodyId: draft.id,
+    blockId: `line-${newMemoLine.value}`,
+    lineNumber: newMemoLine.value,
+    targetText: displayedLines.value[index] ?? '',
+    beforeText: displayedLines.value[index - 1] ?? '',
+    afterText: displayedLines.value[index + 1] ?? '',
+    memoType: newMemoType.value,
+    content: newMemoContent.value,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
   };
   dataStore.lineMemos.push(memo);
-  selectedMemo.value = memo;
+  clearMemoPopover();
   newMemoContent.value = '';
+  editorTab.value = 'memo';
 }
+
 function exportText(withMemos = false) {
-  if (!body.value) return;
-  const content = withMemos
-    ? lines.value.map((line, index) => {
+  if (!displayedContent.value.trim() && !withMemos) return;
+  const content = withMemos && selectedKind.value === 'scene'
+    ? displayedLines.value.map((line, index) => {
         const memo = memoForLine(index + 1);
         return memo ? `${line}\n[メモ:${memo.memoType}] ${memo.content}` : line;
       }).join('\n')
-    : body.value.content;
-  downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), `${body.value.title}.txt`);
+    : displayedContent.value;
+  const filename = selectedKind.value === 'scene'
+    ? `${selectedScene.value?.title || 'シーン本文'}.txt`
+    : `${selectedEpisode.value?.title || '話本文'}.txt`;
+  downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), filename);
+}
+
+watchEffect(() => {
+  const bodyId = route.query.bodyId;
+  if (typeof bodyId !== 'string') return;
+  const draft = dataStore.bodyDrafts.find((item) => item.id === bodyId);
+  if (!draft) return;
+  if (draft.sceneId) {
+    selectScene(draft.sceneId);
+    return;
+  }
+  if (draft.episodeId) selectEpisode(draft.episodeId);
+});
+
+watch(
+  episodes,
+  (items) => {
+    if (!items.length) {
+      selectedEpisodeId.value = '';
+      selectedSceneId.value = '';
+      return;
+    }
+    if (!selectedEpisodeId.value || !items.some((episode) => episode.id === selectedEpisodeId.value)) {
+      selectEpisode(items[0].id);
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  scenes,
+  (items) => {
+    if (selectedSceneId.value && !items.some((scene) => scene.id === selectedSceneId.value)) {
+      selectedSceneId.value = '';
+      if (selectedKind.value === 'scene') selectedKind.value = 'episode';
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => displayedContent.value,
+  () => {
+    measureWrappedLineCounts();
+    syncLineViewScroll();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => selectedKind.value,
+  () => {
+    measureWrappedLineCounts();
+  }
+);
+
+watch(
+  [selectedKind, selectedChapterId, selectedEpisodeId, selectedSceneId],
+  ([kind, chapterId, episodeId, sceneId]) => {
+    setProjectNavigatorSelection(projectId, { kind, chapterId, episodeId, sceneId });
+  }
+);
+
+watch(
+  () => transientStore.navigatorSelections[projectId],
+  (selection) => {
+    if (!selection) return;
+    if (selection.kind === 'chapter' && selection.chapterId && (selectedKind.value !== 'chapter' || selection.chapterId !== selectedChapterId.value)) {
+      selectChapter(selection.chapterId);
+      return;
+    }
+    if (selection.kind === 'episode' && selection.episodeId && selection.episodeId !== selectedEpisodeId.value) {
+      selectEpisode(selection.episodeId);
+      return;
+    }
+    if (selection.kind === 'scene' && selection.sceneId && selection.sceneId !== selectedSceneId.value) {
+      selectScene(selection.sceneId);
+    }
+  },
+  { deep: true, immediate: true }
+);
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick);
+  window.addEventListener('resize', measureWrappedLineCounts);
+  measureWrappedLineCounts();
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick);
+  window.removeEventListener('resize', measureWrappedLineCounts);
+});
+
+function getMemoTypeLabel(memoType: MemoType): string {
+  const labels: Record<MemoType, string> = {
+    revision: '修正',
+    foreshadowing: '伏線',
+    characterEmotion: 'キャラ感情',
+    description: '描写',
+    caution: '注意',
+    prePostCheck: '前後チェック',
+  };
+  return labels[memoType] || memoType;
+}
+
+function lineButtonMemo(lineNumber: number) {
+  return memoForLine(lineNumber) ?? null;
+}
+
+function openMemoPopover(lineNumber: number, event: MouseEvent) {
+  const memo = lineButtonMemo(lineNumber);
+  if (!memo) return;
+  const button = event.currentTarget as HTMLElement;
+  const container = button.closest('.editor-pane');
+  if (!container) return;
+  const buttonRect = button.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  memoPopover.value = {
+    memo,
+    top: buttonRect.top - containerRect.top + (buttonRect.height / 2) + 8,
+  };
+}
+
+function hoverMemo(lineNumber: number, event: MouseEvent) {
+  if (memoPopoverPinned.value) return;
+  openMemoPopover(lineNumber, event);
+}
+
+function pinMemo(lineNumber: number, event: MouseEvent) {
+  memoPopoverPinned.value = true;
+  editorPanelCollapsed.value = false;
+  editorTab.value = 'memo';
+  openMemoPopover(lineNumber, event);
+}
+
+function clearMemoPopover() {
+  memoPopoverPinned.value = false;
+  memoPopover.value = null;
+}
+
+function handleDocumentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  if (target.closest('.line-number') || target.closest('.memo-popover')) return;
+  memoPopover.value = null;
 }
 </script>
 
 <template>
   <AppHeader :project-id="projectId" title="本文エディタ" />
   <main class="page split-page editor-layout">
-    <section class="card side-list">
-      <button @click="addBody">＋ 本文追加</button>
-      <button v-for="item in bodies" :key="item.id" class="list-button" :class="{ active: item.id === selectedBodyId }" @click="selectedBodyId = item.id">
-        <span>{{ item.title }}</span>
-        <small>{{ item.episodeId ? `第${episodeMap.get(item.episodeId)?.number ?? '?'}話` : item.status }}</small>
-      </button>
+    <section class="card side-list fixed-side-list">
+      <div class="scroll-list plot-tree" data-tree-root="editor">
+        <div class="term-side-toolbar">
+          <button type="button" @click="addChapter">＋ 章追加</button>
+        </div>
+        <section
+          v-for="chapter in chapters"
+          :key="chapter.id"
+          class="plot-tree-group"
+          data-tree-level="chapter"
+          :data-tree-id="chapter.id"
+        >
+          <div
+            class="plot-tree-item chapter-item"
+            :class="{ active: selectedChapterId === chapter.id && selectedKind !== 'scene' && selectedKind !== 'episode' }"
+          >
+            <div class="plot-tree-label-button" role="button" tabindex="0" @click="selectChapter(chapter.id)" @keydown.enter.prevent="selectChapter(chapter.id)" @keydown.space.prevent="selectChapter(chapter.id)">
+              <div class="plot-tree-top-line">
+                <span class="plot-tree-left-head">
+                  <span class="plot-tree-toggle-text" @click.stop="toggleChapterCollapse(chapter.id)">{{ isChapterCollapsed(chapter.id) ? '▶' : '▼' }}</span>
+                  <span class="plot-tree-icon">📁</span>
+                  <span class="plot-tree-number-line">第{{ chapter.number }}章</span>
+                </span>
+                <button type="button" class="secondary plot-inline-action" @click.stop="selectChapter(chapter.id); addEpisode(chapter.id)">＋話</button>
+              </div>
+              <span class="plot-tree-title-line">{{ chapter.title }}</span>
+            </div>
+          </div>
+
+          <div v-if="!isChapterCollapsed(chapter.id)" class="plot-tree-children chapter-children" data-tree-dropzone="chapter">
+            <section
+              v-for="episode in episodes.filter((item) => item.chapterId === chapter.id)"
+              :key="episode.id"
+              class="plot-tree-group"
+              data-tree-level="episode"
+              :data-tree-id="episode.id"
+            >
+              <div class="plot-tree-item episode-item" :class="{ active: selectedKind === 'episode' && selectedEpisodeId === episode.id }">
+                <div class="plot-tree-label-button" role="button" tabindex="0" @click="selectEpisode(episode.id)" @keydown.enter.prevent="selectEpisode(episode.id)" @keydown.space.prevent="selectEpisode(episode.id)">
+                  <div class="plot-tree-top-line">
+                    <span class="plot-tree-left-head">
+                      <span class="plot-tree-toggle-text" @click.stop="toggleEpisodeCollapse(episode.id)">{{ isEpisodeCollapsed(episode.id) ? '▶' : '▼' }}</span>
+                      <span class="plot-tree-icon">📄</span>
+                      <span class="plot-tree-number-line">第{{ episode.number }}話</span>
+                    </span>
+                    <button type="button" class="secondary plot-inline-action" @click.stop="selectEpisode(episode.id); addScene(episode.id)">＋シーン</button>
+                  </div>
+                  <span class="plot-tree-title-line">{{ episode.title }}</span>
+                </div>
+              </div>
+
+              <div v-if="!isEpisodeCollapsed(episode.id)" class="plot-tree-children episode-children" data-tree-dropzone="episode">
+                <div
+                  v-for="scene in scenes.filter((item) => item.episodeId === episode.id)"
+                  :key="scene.id"
+                  class="plot-tree-item scene-item"
+                  :class="{ active: selectedKind === 'scene' && selectedSceneId === scene.id }"
+                  data-tree-level="scene"
+                  :data-tree-id="scene.id"
+                >
+                  <span class="plot-tree-spacer"></span>
+                  <span class="plot-tree-icon">📃</span>
+                  <button type="button" class="plot-tree-scene-button" @click="selectScene(scene.id)">
+                    <span class="plot-tree-scene-title">{{ scene.title }}</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
     </section>
 
-    <section v-if="body" class="card editor-card">
-      <TextField label="本文タイトル" v-model="body.title" />
-      <section class="field">
-        <span>対象話</span>
-        <div class="select-summary">
-          <strong>{{ selectedEpisodeLabel }}</strong>
-          <button type="button" @click="episodeModalOpen = true">話を選ぶ</button>
+    <section v-if="selectedKind === 'chapter' && selectedChapter" class="card editor-card line-form-card">
+      <div class="select-summary">
+        <strong>{{ selectedTargetLabel }}</strong>
+        <small>{{ selectedModeLabel }}</small>
+      </div>
+      <div class="hint-box">
+        章を選択中です。配下の話かシーンを選ぶと本文を表示します。
+      </div>
+    </section>
+
+    <section
+      v-else-if="selectedEpisode"
+      class="editor-workspace"
+      :class="{
+        'panel-minimized': editorPanelCollapsed && selectedKind === 'scene',
+        'no-lower-panel': selectedKind === 'episode',
+      }"
+    >
+      <div class="select-summary">
+        <strong>{{ selectedTargetLabel }}</strong>
+        <small>{{ selectedModeLabel }}</small>
+      </div>
+
+      <div v-if="selectedKind === 'episode'" class="hint-box">
+        話を開いているため、配下シーンの本文を結合表示しています。編集はシーンを選択したときだけ行います。
+      </div>
+
+      <section class="card editor-pane-card">
+        <div class="editor-pane">
+        <div class="vscode-editor" :class="{ 'merged-episode-view': selectedKind === 'episode' }">
+          <div ref="lineViewRef" class="line-view">
+            <div class="line-view-inner">
+              <button
+                v-for="(line, index) in displayedLines"
+                :key="index"
+                class="line-number"
+                :class="{ hasMemo: selectedKind === 'scene' && memoForLine(index + 1) }"
+                :style="{ minHeight: `calc(var(--editor-line-height) * ${visualLineCounts[index] || 1})` }"
+                @mouseenter="selectedKind === 'scene' ? hoverMemo(index + 1, $event) : null"
+                @mouseleave="selectedKind === 'scene' && !memoPopoverPinned ? clearMemoPopover() : null"
+                @click="selectedKind === 'scene' ? pinMemo(index + 1, $event) : null"
+              >
+                <span v-if="!(selectedKind === 'scene' && memoForLine(index + 1))">{{ index + 1 }}</span>
+                <span v-else class="line-number-badge">{{ index + 1 }}</span>
+              </button>
+            </div>
+          </div>
+          <textarea
+            ref="bodyTextareaRef"
+            class="body-textarea auto-textarea"
+            :class="{ readonly: selectedKind === 'episode' }"
+            :readonly="selectedKind === 'episode'"
+            :value="displayedContent"
+            @scroll="syncLineViewScroll"
+            @input="updateSceneContent(($event.target as HTMLTextAreaElement).value)"
+          />
+        </div>
+        <div v-if="memoPopover" class="memo-popover" :style="{ top: `${memoPopover.top}px` }">
+          <strong class="memo-type-label">{{ getMemoTypeLabel(memoPopover.memo.memoType) }}</strong>
+          <p>{{ memoPopover.memo.content }}</p>
+        </div>
         </div>
       </section>
-      <div class="counter-bar">
-        <span>文字数 {{ charCount }}</span>
-        <span>行数 {{ lines.length }}</span>
-        <span>空行 {{ blankLineCount }}</span>
-        <span>会話 {{ dialogueCount }}</span>
-        <span>メモ {{ memos.length }}</span>
-      </div>
 
-      <div class="vscode-editor">
-        <div class="line-view">
+      <section v-if="selectedKind === 'scene'" class="card editor-lower-panel" :class="{ collapsed: editorPanelCollapsed }">
+        <div class="editor-panel-tabs">
           <button
-            v-for="(line, index) in lines"
-            :key="index"
-            class="line-number"
-            :class="{ hasMemo: memoForLine(index + 1) }"
-            @click="selectedMemo = memoForLine(index + 1) || null; newMemoLine = index + 1"
+            type="button"
+            class="editor-panel-tab"
+            :class="{ active: editorTab === 'info' }"
+            @click="editorTab = 'info'"
           >
-            {{ index + 1 }}<span v-if="memoForLine(index + 1)">●</span>
+            情報
+          </button>
+          <button
+            type="button"
+            class="editor-panel-tab"
+            :class="{ active: editorTab === 'memo' }"
+            @click="editorTab = 'memo'"
+          >
+            行間メモ
+          </button>
+          <button
+            type="button"
+            class="editor-panel-tab"
+            :class="{ active: editorTab === 'export' }"
+            @click="editorTab = 'export'"
+          >
+            出力
+          </button>
+          <button type="button" class="secondary editor-panel-toggle" @click="editorPanelCollapsed = !editorPanelCollapsed">
+            {{ editorPanelCollapsed ? '展開' : '最小化' }}
           </button>
         </div>
-        <textarea ref="bodyTextareaRef" class="body-textarea auto-textarea" :value="body.content" @input="updateContent(($event.target as HTMLTextAreaElement).value)" />
-      </div>
+        <div v-if="!editorPanelCollapsed" class="editor-panel-body">
+          <div v-if="editorTab === 'info'" class="editor-panel-section">
+            <div class="counter-bar">
+              <span>文字数 {{ charCount }}</span>
+              <span>行数 {{ displayedLines.length }}</span>
+              <span>空行 {{ blankLineCount }}</span>
+              <span>会話 {{ dialogueCount }}</span>
+              <span>メモ {{ selectedKind === 'scene' ? memos.length : 0 }}</span>
+            </div>
+          </div>
 
-      <details class="memo-panel" open>
-        <summary>行間メモ</summary>
-        <div class="memo-form">
-          <label class="field"><span>行番号</span><input type="number" min="1" v-model.number="newMemoLine" /></label>
-          <label class="field"><span>種類</span><select v-model="newMemoType"><option>revision</option><option>foreshadowing</option><option>characterEmotion</option><option>description</option><option>caution</option><option>prePostCheck</option></select></label>
-          <TextField label="メモ内容" type="textarea" v-model="newMemoContent" />
-          <button class="secondary" @click="addMemo">メモ追加</button>
+          <div v-if="editorTab === 'memo'" class="editor-panel-section">
+            <div v-if="selectedKind === 'scene'" class="memo-form">
+              <label class="field"><span>行番号</span><input type="number" min="1" v-model.number="newMemoLine" /></label>
+              <label class="field"><span>種類</span><select v-model="newMemoType"><option value="revision">修正</option><option value="foreshadowing">伏線</option><option value="characterEmotion">キャラ感情</option><option value="description">描写</option><option value="caution">注意</option><option value="prePostCheck">前後チェック</option></select></label>
+              <TextField label="メモ内容" type="textarea" v-model="newMemoContent" />
+              <button class="secondary" @click="addMemo">メモ追加</button>
+            </div>
+            <div v-else class="hint-box">
+              話表示では行間メモを編集しません。シーンを選択してください。
+            </div>
+          </div>
+
+          <div v-if="editorTab === 'export'" class="editor-panel-section">
+            <div class="button-row">
+              <button class="secondary" @click="exportText(false)">本文のみtxt出力</button>
+              <button v-if="selectedKind === 'scene'" class="secondary" @click="exportText(true)">メモ付きtxt出力</button>
+            </div>
+          </div>
         </div>
-        <article v-if="selectedMemo" class="selected-memo">
-          <b>{{ selectedMemo.lineNumber }}行目 / {{ selectedMemo.memoType }}</b>
-          <p>{{ selectedMemo.content }}</p>
-        </article>
-      </details>
-
-      <div class="button-row">
-        <button class="secondary" @click="exportText(false)">本文のみtxt出力</button>
-        <button class="secondary" @click="exportText(true)">メモ付きtxt出力</button>
-      </div>
+      </section>
     </section>
 
-    <section v-else class="card empty-state">本文を選択してください。</section>
-
-    <SelectionModal
-      :open="episodeModalOpen"
-      title="本文の対象話を選ぶ"
-      :items="episodeItems"
-      :selected-id="body?.episodeId ?? ''"
-      empty-text="話プロットがありません。先にプロットで話を作成してください。"
-      @close="episodeModalOpen = false"
-      @select="body ? updateBodyEpisode($event) : createBodyForEpisode($event)"
-    />
+    <section v-else class="card empty-state">本文を書く話かシーンを選択してください。</section>
   </main>
 </template>

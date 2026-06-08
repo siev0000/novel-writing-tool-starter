@@ -362,11 +362,39 @@ type DeletedSnapshot =
   | DeletedEpisodeSnapshot
   | DeletedSceneSnapshot;
 
+export type ProjectNavigatorSelection = {
+  kind: 'workPlot' | 'chapter' | 'episode' | 'scene';
+  chapterId: string;
+  episodeId: string;
+  sceneId: string;
+};
+
 export const transientStore = reactive<{
   deletedItems: DeletedSnapshot[];
+  navigatorSelections: Record<string, ProjectNavigatorSelection>;
 }>({
   deletedItems: [],
+  navigatorSelections: {},
 });
+
+export function getProjectNavigatorSelection(projectId: string): ProjectNavigatorSelection {
+  if (!transientStore.navigatorSelections[projectId]) {
+    transientStore.navigatorSelections[projectId] = {
+      kind: 'workPlot',
+      chapterId: '',
+      episodeId: '',
+      sceneId: '',
+    };
+  }
+  return transientStore.navigatorSelections[projectId];
+}
+
+export function setProjectNavigatorSelection(projectId: string, selection: Partial<ProjectNavigatorSelection>) {
+  transientStore.navigatorSelections[projectId] = {
+    ...getProjectNavigatorSelection(projectId),
+    ...selection,
+  };
+}
 
 function cloneValue<T>(value: T): T {
   if (value === undefined || value === null) return value;
