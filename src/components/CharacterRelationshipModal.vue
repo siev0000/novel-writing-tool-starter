@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { resizeTextarea } from '../utils/textarea';
 
 type CharacterOption = {
   id: string;
@@ -28,6 +29,8 @@ const targetId = ref('');
 const relationType = ref('');
 const impressionFromCurrent = ref('');
 const impressionToCurrent = ref('');
+const impressionFromTextarea = ref<HTMLTextAreaElement | null>(null);
+const impressionToTextarea = ref<HTMLTextAreaElement | null>(null);
 
 function applyDraft(target: string) {
   const draft = props.relations?.find((item) => item.targetId === target);
@@ -36,21 +39,46 @@ function applyDraft(target: string) {
   impressionToCurrent.value = draft?.impressionToCurrent ?? '';
 }
 
+function syncTextareas() {
+  resizeTextarea(impressionFromTextarea.value, 15);
+  resizeTextarea(impressionToTextarea.value, 15);
+}
+
 watch(
   () => props.open,
-  (open) => {
+  async (open) => {
     if (!open) return;
     targetId.value = props.characters[0]?.id ?? '';
     applyDraft(targetId.value);
+    await nextTick();
+    syncTextareas();
   }
 );
 
 watch(targetId, (value) => {
   if (!props.open) return;
   applyDraft(value);
+  nextTick(syncTextareas);
 });
 
+watch(
+  () => [impressionFromCurrent.value, impressionToCurrent.value],
+  async () => {
+    if (!props.open) return;
+    await nextTick();
+    syncTextareas();
+  }
+);
+
 const canSave = computed(() => !!targetId.value);
+
+onMounted(() => {
+  window.addEventListener('resize', syncTextareas);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncTextareas);
+});
 
 function save() {
   if (!canSave.value) return;
@@ -81,12 +109,12 @@ function save() {
 
         <label class="field">
           <span>その人物への印象</span>
-          <textarea v-model="impressionFromCurrent" rows="4" placeholder="こちらから相手への印象や感情" />
+          <textarea ref="impressionFromTextarea" v-model="impressionFromCurrent" class="auto-textarea" rows="4" placeholder="こちらから相手への印象や感情" />
         </label>
 
         <label class="field">
           <span>相手からの印象</span>
-          <textarea v-model="impressionToCurrent" rows="4" placeholder="相手からこちらへの印象や感情" />
+          <textarea ref="impressionToTextarea" v-model="impressionToCurrent" class="auto-textarea" rows="4" placeholder="相手からこちらへの印象や感情" />
         </label>
 
         <div class="button-row">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ProfileFieldInputType } from '../types/models';
+import { resizeTextarea } from '../utils/textarea';
 
 const props = defineProps<{
   label: string;
@@ -14,9 +15,42 @@ defineEmits<{ 'update:modelValue': [value: string] }>();
 const normalizedOptions = computed(() => (props.options ?? []).filter((option) => option.trim().length > 0));
 const usesRadioOptions = computed(() => props.type === 'select' && normalizedOptions.value.length === 2);
 const radioGroupName = `profile-field-${Math.random().toString(36).slice(2)}`;
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const textareaRows = computed(() => {
   const lineCount = props.modelValue.split('\n').length;
   return Math.max(1, Math.min(4, lineCount));
+});
+
+function syncTextareaHeight() {
+  resizeTextarea(textareaRef.value, 15);
+}
+
+watch(
+  () => props.modelValue,
+  async () => {
+    if (props.type !== 'textarea') return;
+    await nextTick();
+    syncTextareaHeight();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => props.type,
+  async () => {
+    await nextTick();
+    syncTextareaHeight();
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  window.addEventListener('resize', syncTextareaHeight);
+  syncTextareaHeight();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncTextareaHeight);
 });
 </script>
 
@@ -52,6 +86,8 @@ const textareaRows = computed(() => {
     />
     <textarea
       v-else
+      ref="textareaRef"
+      class="auto-textarea"
       :value="modelValue"
       :placeholder="placeholder"
       :rows="textareaRows"

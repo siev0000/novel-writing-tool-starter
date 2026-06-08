@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import { useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import SelectionModal from '../components/SelectionModal.vue';
@@ -7,6 +7,7 @@ import type { SelectionModalItem } from '../components/SelectionModal.vue';
 import TextField from '../components/TextField.vue';
 import { dataStore, downloadBlob } from '../store/data';
 import { createId, nowIso } from '../utils/id';
+import { resizeTextarea } from '../utils/textarea';
 import type { BodyDraft, LineMemo, MemoType } from '../types/models';
 
 const projectId = useRoute().params.projectId as string;
@@ -14,6 +15,7 @@ const route = useRoute();
 const selectedBodyId = ref('');
 const selectedMemo = ref<LineMemo | null>(null);
 const episodeModalOpen = ref(false);
+const bodyTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const newMemoLine = ref(1);
 const newMemoType = ref<MemoType>('revision');
 const newMemoContent = ref('');
@@ -42,11 +44,41 @@ const selectedEpisodeLabel = computed(() => {
   return `第${episode.number}話 ${episode.title || ''}`.trim();
 });
 
+function syncBodyTextareaHeight() {
+  resizeTextarea(bodyTextareaRef.value, 15);
+}
+
 watchEffect(() => {
   const bodyId = route.query.bodyId;
   if (typeof bodyId === 'string' && dataStore.bodyDrafts.some((draft) => draft.id === bodyId)) {
     selectedBodyId.value = bodyId;
   }
+});
+
+watch(
+  () => body.value?.content,
+  async () => {
+    await nextTick();
+    syncBodyTextareaHeight();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => body.value?.id,
+  async () => {
+    await nextTick();
+    syncBodyTextareaHeight();
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  window.addEventListener('resize', syncBodyTextareaHeight);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncBodyTextareaHeight);
 });
 
 function addBody() {
@@ -151,7 +183,7 @@ function exportText(withMemos = false) {
             {{ index + 1 }}<span v-if="memoForLine(index + 1)">●</span>
           </button>
         </div>
-        <textarea class="body-textarea" :value="body.content" @input="updateContent(($event.target as HTMLTextAreaElement).value)" />
+        <textarea ref="bodyTextareaRef" class="body-textarea auto-textarea" :value="body.content" @input="updateContent(($event.target as HTMLTextAreaElement).value)" />
       </div>
 
       <details class="memo-panel" open>

@@ -100,7 +100,11 @@ input:focus, textarea:focus, select:focus {
   outline: none;
   box-shadow: none;
 }
-textarea { resize: vertical; line-height: 1.7; }
+textarea {
+  resize: none;
+  overflow: hidden;
+  line-height: 1.7;
+}
 .app-shell {
   position: absolute;
   top: 0;
@@ -408,7 +412,7 @@ h1 { margin: 0; font-size: 22px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
+  width: 40px;
   min-height: 18px;
   font-size: 26px;
 }
@@ -443,25 +447,28 @@ h1 { margin: 0; font-size: 22px; }
 }
 .plot-tree-left-head {
   display: grid;
-  grid-template-columns: 20px 18px minmax(0, 1fr);
+  grid-template-columns: 24px 24px minmax(0, 1fr);
   align-items: center;
-  gap: 0px;
+  gap: 6px;
   min-width: 0;
   width: 100%;
 }
 .plot-tree-toggle-text {
   display: inline-block;
-  width: 20px;
+  width: 24px;
   text-align: center;
   color: var(--muted);
 }
 .plot-tree-number-line {
   display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 26px;
   font-weight: 700;
+  line-height: 1;
+  padding-left: 10px;
 }
 .plot-tree-title-line {
   display: -webkit-box;
@@ -483,6 +490,26 @@ h1 { margin: 0; font-size: 22px; }
 }
 .plot-tree-label-button:hover {
   color: var(--accent-dark);
+}
+.plot-tree-scene-button {
+  min-width: 0;
+  width: 100%;
+  padding: 0 0 0 10px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+.plot-tree-scene-title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  padding-left: 2px;
 }
 .plot-inline-action {
   align-self: start;

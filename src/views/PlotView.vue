@@ -422,8 +422,8 @@ function removeSceneCharacter(item: SelectionModalItem) {
                 >
                   <span class="plot-tree-spacer"></span>
                   <span class="plot-tree-icon">📃</span>
-                  <button type="button" class="plot-tree-label-button" @click="selectScene(scene.id)">
-                    {{ scene.title }}
+                  <button type="button" class="plot-tree-scene-button" @click="selectScene(scene.id)">
+                    <span class="plot-tree-scene-title">{{ scene.title }}</span>
                   </button>
                 </div>
               </div>
