@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { dataStore, getProject, transientStore } from '../store/data';
+import { dataStore, formatStorageBytes, getProject, getStoredDataBytes, STORAGE_USAGE_QUOTA_BYTES, transientStore } from '../store/data';
 
 const props = defineProps<{ projectId?: string; title?: string }>();
 const router = useRouter();
@@ -9,6 +9,14 @@ const route = useRoute();
 const project = computed(() => (props.projectId ? getProject(props.projectId) : undefined));
 const deletedCount = computed(() => transientStore.deletedItems.length);
 const onTrashPage = computed(() => route.path === '/trash');
+const storageUsedBytes = computed(() => getStoredDataBytes());
+const storageQuotaBytes = computed(() => STORAGE_USAGE_QUOTA_BYTES);
+const storagePercent = computed(() => {
+  if (!storageQuotaBytes.value) return 0;
+  return Math.min(100, (storageUsedBytes.value / storageQuotaBytes.value) * 100);
+});
+const storageUsedLabel = computed(() => formatStorageBytes(storageUsedBytes.value));
+const storageQuotaLabel = computed(() => formatStorageBytes(storageQuotaBytes.value));
 const counts = computed(() => {
   const projectId = props.projectId;
   if (!projectId) {
@@ -41,6 +49,16 @@ function goTrash() {
 
 <template>
   <header class="app-header">
+    <div class="storage-meter" :title="`保存容量 ${storageUsedLabel}/${storageQuotaLabel}`">
+      <div class="storage-meter-track">
+        <div
+          class="storage-meter-fill"
+          :class="{ warn: storagePercent >= 80, danger: storagePercent >= 95 }"
+          :style="{ width: `${storagePercent}%` }"
+        />
+      </div>
+      <div class="storage-meter-label">{{ storageUsedLabel }}/{{ storageQuotaLabel }}</div>
+    </div>
     <div class="header-top">
       <div class="header-left">
         <button class="ghost" @click="goBack">← 戻る</button>

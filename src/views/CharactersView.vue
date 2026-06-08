@@ -468,8 +468,8 @@ function toggleProfileSection(section: string) {
       </div>
       <div class="scroll-list">
         <button v-for="c in characters" :key="c.id" class="list-button" :class="{ active: c.id === selectedId }" @click="selectedId = c.id">
-          <span class="ruby-stack list-ruby">
-            <span class="ruby-text">{{ c.ruby || '　' }}</span>
+          <span class="ruby-stack list-ruby" :class="{ 'no-ruby': !c.ruby }">
+            <span v-if="c.ruby" class="ruby-text">{{ c.ruby }}</span>
             <span class="ruby-base">{{ c.name }}</span>
           </span>
         </button>
@@ -503,8 +503,8 @@ function toggleProfileSection(section: string) {
         <section class="name-display-row compact-name-row">
           <div class="field-label-value">
             <strong class="section-label">名前</strong>
-            <span class="ruby-stack compact-name-value">
-              <span class="ruby-text">{{ selected.ruby || '　' }}</span>
+            <span class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
+              <span v-if="selected.ruby" class="ruby-text">{{ selected.ruby }}</span>
               <span class="ruby-base">{{ selected.name || '名前未設定' }}</span>
             </span>
           </div>

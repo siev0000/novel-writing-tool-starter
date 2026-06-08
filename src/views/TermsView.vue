@@ -205,8 +205,8 @@ function confirmDeleteSelectedTerm() {
       </div>
       <div class="scroll-list">
         <button v-for="t in terms" :key="t.id" class="list-button" :class="{ active: t.id === selectedId }" @click="selectedId = t.id">
-          <span class="ruby-stack list-ruby">
-            <span class="ruby-text">{{ t.ruby || '　' }}</span>
+          <span class="ruby-stack list-ruby" :class="{ 'no-ruby': !t.ruby }">
+            <span v-if="t.ruby" class="ruby-text">{{ t.ruby }}</span>
             <span class="ruby-base">{{ t.name }}</span>
           </span>
           <small>{{ t.category }}</small>
@@ -241,8 +241,8 @@ function confirmDeleteSelectedTerm() {
         <section class="name-display-row compact-name-row">
         <div class="field-label-value">
           <strong class="section-label">用語名</strong>
-          <span class="ruby-stack compact-name-value">
-            <span class="ruby-text">{{ selected.ruby || '　' }}</span>
+          <span class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
+            <span v-if="selected.ruby" class="ruby-text">{{ selected.ruby }}</span>
             <span class="ruby-base">{{ selected.name || '名前未設定' }}</span>
           </span>
         </div>

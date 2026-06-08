@@ -127,6 +127,37 @@ textarea {
   backdrop-filter: blur(8px);
   border-bottom: 1px solid rgba(255,255,255,.12);
 }
+.storage-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.storage-meter-track {
+  flex: 1;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+}
+.storage-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #86b89b, #6f9f91);
+}
+.storage-meter-fill.warn {
+  background: linear-gradient(90deg, #cda65b, #d98f4a);
+}
+.storage-meter-fill.danger {
+  background: linear-gradient(90deg, #c46b6b, #a94d4d);
+}
+.storage-meter-label {
+  min-width: max-content;
+  color: #dfe8e5;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: .01em;
+}
 .header-top {
   display: flex;
   gap: 12px;
@@ -603,12 +634,19 @@ h1 { margin: 0; font-size: 22px; }
   gap: 2px;
   align-items: start;
 }
+.ruby-stack.no-ruby {
+  gap: 0;
+}
 .ruby-text {
   color: var(--muted);
   font-size: 18px;
   font-weight: 600;
   line-height: 1.1;
   min-height: 12px;
+}
+.ruby-stack.no-ruby .ruby-text {
+  display: none;
+  min-height: 0;
 }
 .ruby-base {
   line-height: 1.4;
@@ -617,6 +655,12 @@ h1 { margin: 0; font-size: 22px; }
 .list-ruby {
   font-weight: 700;
   padding-top: 2px;
+}
+.list-ruby.no-ruby {
+  padding-top: 0;
+}
+.compact-name-value.no-ruby {
+  gap: 0;
 }
 .list-button.active { outline: 3px solid #97c9be; }
 .list-button small { display: block; color: var(--muted); }

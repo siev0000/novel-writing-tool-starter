@@ -25,6 +25,7 @@ import type {
 import { createId, nowIso } from '../utils/id';
 
 const STORAGE_KEY = 'novel-writing-tool-data-v1';
+export const STORAGE_USAGE_QUOTA_BYTES = 5 * 1024 * 1024;
 const GENRE_TAG_TYPE = 'ジャンルタグ';
 const MAX_DELETED_ITEMS_PER_PROJECT = 30;
 const legacyTagTypeMap: Record<string, string> = {
@@ -235,6 +236,18 @@ function loadData(): AppData {
 }
 
 export const dataStore = reactive<AppData>(loadData());
+
+export function getStoredDataBytes() {
+  return new TextEncoder().encode(JSON.stringify(dataStore)).length;
+}
+
+export function formatStorageBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes}B`;
+  const kilobytes = bytes / 1024;
+  if (kilobytes < 1024) return `${kilobytes.toFixed(kilobytes < 10 ? 1 : 0)}KB`;
+  const megabytes = kilobytes / 1024;
+  return `${megabytes.toFixed(megabytes < 10 ? 1 : 0)}MB`;
+}
 type DeletedSnapshotBase = {
   trashId: string;
   deletedAt: string;
