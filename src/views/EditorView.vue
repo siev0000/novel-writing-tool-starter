@@ -486,10 +486,10 @@ function handleDocumentClick(event: MouseEvent) {
   <AppHeader :project-id="projectId" title="本文エディタ" />
   <main class="page split-page editor-layout">
     <section class="card side-list fixed-side-list">
+      <div class="term-side-toolbar">
+        <button type="button" @click="addChapter">＋ 章追加</button>
+      </div>
       <div class="scroll-list plot-tree" data-tree-root="editor">
-        <div class="term-side-toolbar">
-          <button type="button" @click="addChapter">＋ 章追加</button>
-        </div>
         <section
           v-for="chapter in chapters"
           :key="chapter.id"

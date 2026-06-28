@@ -84,7 +84,7 @@ function isSelected(item: SelectionModalItem) {
 <template>
   <Teleport to="body">
     <div v-if="open" class="modal-backdrop">
-      <section class="modal-panel" role="dialog" aria-modal="true" :aria-label="title" @click.stop>
+      <section class="modal-panel selection-modal" role="dialog" aria-modal="true" :aria-label="title" @click.stop>
         <header class="modal-header">
           <h2>{{ title }}</h2>
           <button class="ghost" type="button" @click="emit('close')">閉じる</button>

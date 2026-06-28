@@ -9,6 +9,7 @@ const route = useRoute();
 const project = computed(() => (props.projectId ? getProject(props.projectId) : undefined));
 const deletedCount = computed(() => transientStore.deletedItems.length);
 const onTrashPage = computed(() => route.path === '/trash');
+const onHomePage = computed(() => route.path === '/');
 const storageUsedBytes = computed(() => getStoredDataBytes());
 const storageQuotaBytes = computed(() => STORAGE_USAGE_QUOTA_BYTES);
 const storagePercent = computed(() => {
@@ -26,20 +27,19 @@ const counts = computed(() => {
     characters: dataStore.characters.filter((item) => item.projectId === projectId).length,
     tags: dataStore.tags.filter((item) => item.projectId === projectId && item.type !== 'ジャンルタグ').length,
     relationships: dataStore.relationships.filter((item) => item.projectId === projectId).length,
-    terms: dataStore.terms.filter((item) => item.projectId === projectId).length,
+    terms: dataStore.tags.filter((item) => item.projectId === projectId && item.type === '用語').length,
     episodes: dataStore.episodes.filter((item) => item.projectId === projectId).length,
     bodies: dataStore.bodyDrafts.filter((item) => item.projectId === projectId).length,
   };
 });
 
-function goBack() {
-  if (history.length > 1) router.back();
-  else if (props.projectId) router.push(`/project/${props.projectId}`);
-  else router.push('/');
-}
-
 function goHome() {
   router.push('/');
+}
+
+function goPrimaryNav() {
+  if (history.length > 1) router.back();
+  else router.push('/');
 }
 
 function goTrash() {
@@ -61,7 +61,7 @@ function goTrash() {
     </div>
     <div class="header-top">
       <div class="header-left">
-        <button class="ghost" @click="goBack">← 戻る</button>
+        <button v-if="!onHomePage" class="ghost" @click="goPrimaryNav">← 戻る</button>
         <div>
           <p class="eyebrow">小説書き出しアプリ</p>
           <h1>{{ project?.title || title || '作品一覧' }}</h1>
@@ -78,7 +78,7 @@ function goTrash() {
       <router-link :to="`/project/${projectId}/characters`">人物 <span>{{ counts.characters }}</span></router-link>
       <router-link :to="`/project/${projectId}/tags`">タグ <span>{{ counts.tags }}</span></router-link>
       <router-link :to="`/project/${projectId}/relationships`">相関図 <span>{{ counts.relationships }}</span></router-link>
-      <router-link :to="`/project/${projectId}/terms`">用語 <span>{{ counts.terms }}</span></router-link>
+      <router-link :to="{ path: `/project/${projectId}/tags`, query: { type: '用語' } }">用語 <span>{{ counts.terms }}</span></router-link>
       <router-link :to="`/project/${projectId}/plot`">プロット <span>{{ counts.episodes }}</span></router-link>
       <router-link :to="`/project/${projectId}/editor`">本文 <span>{{ counts.bodies }}</span></router-link>
     </nav>

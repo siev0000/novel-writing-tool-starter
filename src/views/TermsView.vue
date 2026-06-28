@@ -29,6 +29,7 @@ const termNameError = ref('');
 const tagModalOpen = ref(false);
 const tagRemoveModalOpen = ref(false);
 const termDeleteTargetId = ref('');
+const relatedTagDeleteTarget = ref<SelectionModalItem | null>(null);
 const terms = computed(() => {
   return dataStore.terms.filter((t) => {
     const matchProject = t.projectId === projectId;
@@ -83,6 +84,7 @@ watch(selectedId, () => {
   tagModalOpen.value = false;
   tagRemoveModalOpen.value = false;
   termDeleteTargetId.value = '';
+  relatedTagDeleteTarget.value = null;
 });
 
 watch(
@@ -157,11 +159,17 @@ function addTag(item: SelectionModalItem) {
 }
 
 function removeTag(item: SelectionModalItem) {
+  relatedTagDeleteTarget.value = item;
+}
+
+function confirmRemoveTag() {
+  if (!selected.value || !relatedTagDeleteTarget.value) return;
   if (!selected.value) return;
-  selected.value.relatedTagIds = selected.value.relatedTagIds.filter((id) => id !== item.id);
+  selected.value.relatedTagIds = selected.value.relatedTagIds.filter((id) => id !== relatedTagDeleteTarget.value?.id);
   selected.value.updatedAt = nowIso();
   syncTermActiveVersion(selected.value);
   tagRemoveModalOpen.value = false;
+  relatedTagDeleteTarget.value = null;
 }
 
 function updateSelectedField<K extends keyof Term>(key: K, value: Term[K]) {
@@ -239,14 +247,16 @@ function confirmDeleteSelectedTerm() {
           </div>
         </div>
         <section class="name-display-row compact-name-row">
-        <div class="field-label-value">
-          <strong class="section-label">用語名</strong>
-          <span class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
-            <span v-if="selected.ruby" class="ruby-text">{{ selected.ruby }}</span>
-            <span class="ruby-base">{{ selected.name || '名前未設定' }}</span>
-          </span>
-        </div>
-        <button type="button" class="secondary" @click="termNameModalOpen = true">変更</button>
+          <div class="field-label-value">
+            <div class="name-label-line">
+              <button type="button" class="inline-edit-button" @click="termNameModalOpen = true">✎</button>
+              <strong class="section-label">用語名</strong>
+            </div>
+            <span class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
+              <span v-if="selected.ruby" class="ruby-text">{{ selected.ruby }}</span>
+              <span class="ruby-base">{{ selected.name || '名前未設定' }}</span>
+            </span>
+          </div>
         </section>
         <p v-if="termNameError" class="hint-text error-text">{{ termNameError }}</p>
       </div>
@@ -317,6 +327,14 @@ function confirmDeleteSelectedTerm() {
       confirm-label="用語を削除"
       @close="termDeleteTargetId = ''"
       @confirm="confirmDeleteSelectedTerm"
+    />
+    <ConfirmModal
+      :open="Boolean(relatedTagDeleteTarget)"
+      title="関連タグを削除"
+      :message="`「${relatedTagDeleteTarget?.label || ''}」を関連タグから外します。`"
+      confirm-label="関連タグを削除"
+      @close="relatedTagDeleteTarget = null"
+      @confirm="confirmRemoveTag"
     />
   </main>
 </template>

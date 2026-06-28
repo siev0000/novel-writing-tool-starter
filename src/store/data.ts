@@ -13,10 +13,14 @@ import type {
   NovelProject,
   OpeningIdea,
   Tag,
+  TagSummaryItem,
+  TagVersion,
+  TagVersionData,
   PostStylePreset,
   ProfileFieldInputType,
   Relationship,
   Scene,
+  Status,
   Term,
   TermVersion,
   TermVersionData,
@@ -482,6 +486,10 @@ dataStore.characters.forEach((character) => {
   ensureCharacterVersions(character);
   applyActiveCharacterVersion(character);
 });
+dataStore.tags.forEach((tag) => {
+  ensureTagVersions(tag);
+  applyActiveTagVersion(tag);
+});
 dataStore.terms.forEach((term) => {
   ensureTermVersions(term);
   applyActiveTermVersion(term);
@@ -492,6 +500,10 @@ dataStore.scenes.forEach((scene) => {
 dataStore.tags.forEach((tag) => {
   if ((tag.status as string) === 'deleted') tag.status = 'hidden';
   if (legacyTagTypeMap[tag.type]) tag.type = legacyTagTypeMap[tag.type];
+  tag.relatedTagIds ??= [];
+  tag.summaryItems ??= [];
+  tag.createdAt ??= nowIso();
+  tag.updatedAt ??= tag.createdAt;
 });
 dedupeProjectTags();
 
@@ -511,6 +523,7 @@ export function createProject(title = '新しい作品'): NovelProject {
     genre: '',
     genreTagId: undefined,
     genreTagIds: [],
+    customTagTypes: [],
     characterProfileFields: [],
     summary: '',
     memo: '',
@@ -566,6 +579,367 @@ export function createCharacterSnapshot(character: Character | CharacterVersionD
     memo: character.memo,
     customFields: (character.customFields ?? []).map((field) => ({ ...field })),
   };
+}
+
+function createLegacyTermSummaryItems(source: {
+  [key: string]: unknown;
+  description?: string;
+  shortDescription?: string;
+  publicInfo?: string;
+  spoilerInfo?: string;
+  memo?: string;
+}): TagSummaryItem[] {
+  const items: TagSummaryItem[] = [];
+  const pushItem = (title: string, content?: string) => {
+    const normalizedTitle = title.trim();
+    const normalizedContent = content?.trim() || '';
+    if (!normalizedTitle || !normalizedContent) return;
+    if (items.some((item) => item.title === normalizedTitle && item.content === normalizedContent)) return;
+    items.push({ id: createId(), title: normalizedTitle, content: normalizedContent });
+  };
+
+  const description = source.description?.trim() || '';
+  if (description) {
+    const blocks = description.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean);
+    blocks.forEach((block, index) => {
+      const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+      if (!lines.length) return;
+
+      const titleOnlyMatch = lines[0].match(/^(.+?)[：:]$/);
+      if (titleOnlyMatch) {
+        pushItem(titleOnlyMatch[1], lines.slice(1).join('\n'));
+        return;
+      }
+
+      const keyValueLines = lines.filter((line) => /^.+?[：:]\s*.+$/.test(line));
+      if (keyValueLines.length === lines.length && index === 0) {
+        pushItem('基本情報', lines.join('\n'));
+        return;
+      }
+
+      if (blocks.length === 1) {
+        pushItem('概要', block);
+        return;
+      }
+
+      pushItem(index === 0 ? '概要' : `項目${index + 1}`, block);
+    });
+  }
+
+  pushItem('短い説明', source.shortDescription);
+  pushItem('公開情報', source.publicInfo);
+  pushItem('ネタバレ情報', source.spoilerInfo);
+  pushItem('メモ', source.memo);
+
+  const knownKeys = new Set([
+    'id',
+    'projectId',
+    'name',
+    'ruby',
+    'category',
+    'description',
+    'shortDescription',
+    'relatedCharacterIds',
+    'relatedPlotIds',
+    'relatedTagIds',
+    'spoilerInfo',
+    'publicInfo',
+    'memo',
+    'versions',
+    'activeVersionId',
+    'createdAt',
+    'updatedAt',
+  ]);
+
+  Object.entries(source).forEach(([key, value]) => {
+    if (knownKeys.has(key)) return;
+    if (typeof value !== 'string') return;
+    if (!value.trim()) return;
+    pushItem(key, value);
+  });
+  return items;
+}
+
+function isLegacyAutoSummaryItems(summaryItems: TagSummaryItem[] | undefined, description?: string, shortDescription?: string) {
+  if (!summaryItems?.length) return true;
+  if (summaryItems.length !== 1) return false;
+  const item = summaryItems[0];
+  return item.title === '概要' && item.content === (description?.trim() || shortDescription?.trim() || '');
+}
+
+function mergeLegacySummaryItems(existingItems: TagSummaryItem[] | undefined, generatedItems: TagSummaryItem[]) {
+  if (!existingItems?.length) return generatedItems;
+  const merged = existingItems.map((item) => ({ ...item }));
+  generatedItems.forEach((generated) => {
+    if (!merged.some((item) => item.title === generated.title)) {
+      merged.push(generated);
+    }
+  });
+  return merged;
+}
+
+function migrateTermsToTags(options?: { log?: boolean }) {
+  const migratedLogs: Array<{ name: string; titles: string[]; description: string; shortDescription: string }> = [];
+  dataStore.terms.forEach((term) => {
+    const existing = dataStore.tags.find((tag) => tag.id === term.id);
+    const summaryItems = createLegacyTermSummaryItems(term);
+
+    const mappedVersions = (term.versions ?? []).map((version) => ({
+      id: version.id,
+      createdAt: version.createdAt,
+      updatedAt: version.updatedAt,
+      name: version.name,
+      ruby: version.ruby,
+      type: '用語',
+      category: version.category,
+      color: '#607d8b',
+      relatedTagIds: [...(version.relatedTagIds ?? [])],
+      summaryItems: createLegacyTermSummaryItems(version),
+      description: version.description,
+      shortDescription: version.shortDescription,
+      memo: term.memo,
+      status: 'active' as Status,
+      baseSnapshot: version.baseSnapshot
+        ? {
+          name: version.baseSnapshot.name,
+          ruby: version.baseSnapshot.ruby,
+          type: '用語',
+          category: version.baseSnapshot.category,
+          color: '#607d8b',
+          relatedTagIds: [...(version.baseSnapshot.relatedTagIds ?? [])],
+          summaryItems: createLegacyTermSummaryItems(version.baseSnapshot),
+          description: version.baseSnapshot.description,
+          shortDescription: version.baseSnapshot.shortDescription,
+          memo: version.baseSnapshot.memo,
+          status: 'active' as Status,
+        }
+        : undefined,
+    }));
+
+    if (existing) {
+      existing.ruby ||= term.ruby;
+      existing.type = existing.type || '用語';
+      if (existing.type !== '用語' && term.name === existing.name) existing.type = '用語';
+      existing.category ||= term.category;
+      existing.relatedTagIds = existing.relatedTagIds?.length ? existing.relatedTagIds : [...(term.relatedTagIds ?? [])];
+      existing.description ||= term.description;
+      existing.shortDescription ||= term.shortDescription;
+      existing.memo ||= term.memo;
+      if (isLegacyAutoSummaryItems(existing.summaryItems, existing.description, existing.shortDescription) && summaryItems.length) {
+        existing.summaryItems = summaryItems;
+      } else if (summaryItems.length) {
+        existing.summaryItems = mergeLegacySummaryItems(existing.summaryItems, summaryItems);
+      }
+      existing.createdAt ??= term.createdAt;
+      existing.updatedAt ??= term.updatedAt;
+      if (!existing.versions?.length && mappedVersions.length) {
+        existing.versions = mappedVersions;
+        existing.activeVersionId = term.activeVersionId;
+      }
+      if (options?.log) {
+        migratedLogs.push({
+          name: existing.name,
+          titles: (existing.summaryItems ?? []).map((item) => item.title),
+          description: existing.description ?? '',
+          shortDescription: existing.shortDescription ?? '',
+        });
+      }
+      return;
+    }
+
+    dataStore.tags.push({
+      id: term.id,
+      projectId: term.projectId,
+      name: term.name,
+      ruby: term.ruby,
+      type: '用語',
+      category: term.category,
+      color: '#607d8b',
+      relatedTagIds: [...(term.relatedTagIds ?? [])],
+      summaryItems,
+      description: term.description,
+      shortDescription: term.shortDescription,
+      memo: term.memo,
+      source: 'user',
+      status: 'active',
+      versions: mappedVersions,
+      activeVersionId: term.activeVersionId,
+      createdAt: term.createdAt,
+      updatedAt: term.updatedAt,
+    });
+    if (options?.log) {
+      migratedLogs.push({
+        name: term.name,
+        titles: summaryItems.map((item) => item.title),
+        description: term.description ?? '',
+        shortDescription: term.shortDescription ?? '',
+      });
+    }
+  });
+
+  if (options?.log) {
+    console.groupCollapsed(`[migrateTermsToTags] ${migratedLogs.length}件`);
+    if (!migratedLogs.length) {
+      console.info('対象の旧用語データはありませんでした。');
+    }
+    migratedLogs.forEach((entry) => {
+      console.info('[term]', entry.name, {
+        titles: entry.titles,
+        description: entry.description,
+        shortDescription: entry.shortDescription,
+      });
+    });
+    console.groupEnd();
+  }
+}
+
+export function createTagSnapshot(tag: Tag | TagVersionData): TagVersionData {
+  return {
+    name: tag.name,
+    ruby: tag.ruby,
+    type: tag.type,
+    category: tag.category,
+    color: tag.color,
+    relatedTagIds: [...(tag.relatedTagIds ?? [])],
+    summaryItems: (tag.summaryItems ?? []).map((item) => ({ ...item })),
+    description: tag.description,
+    shortDescription: tag.shortDescription,
+    memo: tag.memo,
+    status: tag.status,
+  };
+}
+
+export function applyTagSnapshot(tag: Tag, snapshot: TagVersionData) {
+  tag.name = snapshot.name;
+  tag.ruby = snapshot.ruby;
+  tag.type = snapshot.type;
+  tag.category = snapshot.category;
+  tag.color = snapshot.color;
+  tag.relatedTagIds = [...snapshot.relatedTagIds];
+  tag.summaryItems = snapshot.summaryItems.map((item) => ({ ...item }));
+  tag.description = snapshot.description;
+  tag.shortDescription = snapshot.shortDescription;
+  tag.memo = snapshot.memo;
+  tag.status = snapshot.status;
+}
+
+function findTagActiveVersion(tag: Tag) {
+  return tag.versions?.find((version) => version.id === tag.activeVersionId) ?? tag.versions?.[0];
+}
+
+function applyActiveTagVersion(tag: Tag) {
+  const activeVersion = findTagActiveVersion(tag);
+  if (!activeVersion) return;
+  applyTagSnapshot(tag, activeVersion);
+  tag.updatedAt = activeVersion.updatedAt;
+}
+
+export function getTagActiveVersion(tag: Tag) {
+  return findTagActiveVersion(tag);
+}
+
+export function syncTagActiveVersion(tag: Tag) {
+  ensureTagVersions(tag);
+  const activeVersion = findTagActiveVersion(tag);
+  if (!activeVersion) return;
+  const snapshot = createTagSnapshot(tag);
+  activeVersion.name = snapshot.name;
+  activeVersion.ruby = snapshot.ruby;
+  activeVersion.type = snapshot.type;
+  activeVersion.category = snapshot.category;
+  activeVersion.color = snapshot.color;
+  activeVersion.relatedTagIds = [...snapshot.relatedTagIds];
+  activeVersion.summaryItems = snapshot.summaryItems.map((item) => ({ ...item }));
+  activeVersion.description = snapshot.description;
+  activeVersion.shortDescription = snapshot.shortDescription;
+  activeVersion.memo = snapshot.memo;
+  activeVersion.status = snapshot.status;
+  activeVersion.updatedAt = tag.updatedAt;
+}
+
+export function ensureTagVersions(tag: Tag) {
+  tag.relatedTagIds ??= [];
+  tag.summaryItems ??= [];
+  tag.ruby ??= '';
+  tag.description ??= '';
+  tag.shortDescription ??= '';
+  tag.versions ??= [];
+
+  if (!tag.versions.length) {
+    const now = (tag as Tag & { updatedAt?: string }).updatedAt || nowIso();
+    const version: TagVersion = {
+      id: createId(),
+      createdAt: now,
+      updatedAt: now,
+      ...createTagSnapshot(tag),
+    };
+    tag.versions.push(version);
+    tag.activeVersionId = version.id;
+    return;
+  }
+
+  tag.versions.forEach((version) => {
+    version.relatedTagIds ??= [];
+    version.summaryItems ??= [];
+    version.relatedTagIds = [...version.relatedTagIds];
+    version.summaryItems = version.summaryItems.map((item) => ({ ...item }));
+  });
+
+  tag.activeVersionId ??= tag.versions[0].id;
+  if (!findTagActiveVersion(tag)) tag.activeVersionId = tag.versions[0].id;
+}
+
+export function createTagVersion(tag: Tag) {
+  ensureTagVersions(tag);
+  const activeVersion = findTagActiveVersion(tag);
+  if (!activeVersion) return undefined;
+
+  const now = nowIso();
+  const sourceSnapshot = createTagSnapshot(activeVersion);
+  const newVersion: TagVersion = {
+    id: createId(),
+    createdAt: now,
+    updatedAt: now,
+    ...sourceSnapshot,
+    baseSnapshot: sourceSnapshot,
+  };
+
+  tag.versions?.push(newVersion);
+  tag.activeVersionId = newVersion.id;
+  applyTagSnapshot(tag, sourceSnapshot);
+  (tag as Tag & { updatedAt?: string }).updatedAt = now;
+  return newVersion;
+}
+
+export function activateTagVersion(tag: Tag, versionId: string) {
+  ensureTagVersions(tag);
+  const version = tag.versions?.find((item) => item.id === versionId);
+  if (!version) return;
+  tag.activeVersionId = versionId;
+  applyActiveTagVersion(tag);
+  (tag as Tag & { updatedAt?: string }).updatedAt = nowIso();
+}
+
+export function deleteTagVersion(tag: Tag, versionId: string) {
+  ensureTagVersions(tag);
+  if (!tag.versions?.length || tag.versions.length <= 1) return false;
+
+  const deleteIndex = tag.versions.findIndex((item) => item.id === versionId);
+  if (deleteIndex < 0) return false;
+
+  tag.versions.splice(deleteIndex, 1);
+  const nextVersion = tag.versions[deleteIndex] ?? tag.versions[deleteIndex - 1] ?? tag.versions[0];
+  if (!nextVersion) return false;
+
+  tag.activeVersionId = nextVersion.id;
+  applyActiveTagVersion(tag);
+  (tag as Tag & { updatedAt?: string }).updatedAt = nowIso();
+  return true;
+}
+
+export function isTagVersionChanged(version: TagVersion) {
+  if (!version.baseSnapshot) return false;
+  return JSON.stringify(createTagSnapshot(version)) !== JSON.stringify(version.baseSnapshot);
 }
 
 export function applyCharacterSnapshot(character: Character, snapshot: CharacterVersionData) {
@@ -945,12 +1319,14 @@ export function updateProjectTitle(projectId: string, title: string) {
 export function ensureProjectTitleTag(projectId: string, title: string) {
   const normalizedTitle = title.trim() || '無題の作品';
   const existing = dataStore.tags.find((tag) => tag.projectId === projectId && tag.source === 'default' && tag.type === '作品タグ');
+  const now = nowIso();
 
   if (existing) {
     existing.name = normalizedTitle;
     existing.color = '#2f6f6a';
     existing.status = 'active';
     existing.memo = '';
+    existing.updatedAt = now;
     return existing;
   }
 
@@ -960,9 +1336,13 @@ export function ensureProjectTitleTag(projectId: string, title: string) {
     name: normalizedTitle,
     type: '作品タグ',
     color: '#2f6f6a',
+    relatedTagIds: [],
+    summaryItems: [],
     memo: '',
     source: 'default',
     status: 'active',
+    createdAt: now,
+    updatedAt: now,
   };
   dataStore.tags.unshift(tag);
   return tag;
@@ -972,8 +1352,10 @@ export function ensureDefaultGenreTags(projectId: string) {
   defaultGenreTags.forEach(([name, category, color]) => {
     const memo = genreTagDescriptions[name] ?? '';
     const existing = dataStore.tags.find((tag) => tag.projectId === projectId && tag.type === GENRE_TAG_TYPE && tag.name === name);
+    const now = nowIso();
     if (existing) {
       existing.memo = memo;
+      existing.updatedAt = now;
       return;
     }
 
@@ -984,9 +1366,13 @@ export function ensureDefaultGenreTags(projectId: string) {
       type: GENRE_TAG_TYPE,
       category,
       color,
+      relatedTagIds: [],
+      summaryItems: [],
       memo,
       source: 'default',
       status: 'active',
+      createdAt: now,
+      updatedAt: now,
     };
     dataStore.tags.push(tag);
   });
@@ -1026,15 +1412,20 @@ export function toggleProjectGenre(projectId: string, tagId: string) {
 
 export function createDefaultTags(projectId: string) {
   defaultProjectTags.forEach(([name, type, color]) => {
+    const now = nowIso();
     const tag: Tag = {
       id: createId(),
       projectId,
       name,
       type,
       color,
+      relatedTagIds: [],
+      summaryItems: [],
       memo: '',
       source: 'default',
       status: 'active',
+      createdAt: now,
+      updatedAt: now,
     };
     dataStore.tags.push(tag);
   });
@@ -1042,11 +1433,13 @@ export function createDefaultTags(projectId: string) {
 
 export function ensureDefaultTags(projectId: string) {
   defaultProjectTags.forEach(([name, type, color]) => {
+    const now = nowIso();
     const existing = dataStore.tags.find((tag) => tag.projectId === projectId && tag.name === name && tag.type === type);
     if (existing) {
       existing.color = color;
       existing.source ??= 'default';
       existing.status ??= 'active';
+      existing.updatedAt ??= now;
       return;
     }
 
@@ -1056,9 +1449,13 @@ export function ensureDefaultTags(projectId: string) {
       name,
       type,
       color,
+      relatedTagIds: [],
+      summaryItems: [],
       memo: '',
       source: 'default',
       status: 'active',
+      createdAt: now,
+      updatedAt: now,
     });
   });
 
@@ -1297,7 +1694,7 @@ export function deleteTag(tagId: string) {
   dataStore.openingIdeas.forEach((idea) => {
     idea.usedTagIds = removeIdFromList(idea.usedTagIds, tagId);
   });
-  dataStore.projects.forEach((project) => {
+dataStore.projects.forEach((project) => {
     project.genreTagIds = removeIdFromList(project.genreTagIds, tagId);
     if (project.genreTagId === tagId) project.genreTagId = project.genreTagIds?.[0];
     project.genre = dataStore.tags
@@ -2058,6 +2455,7 @@ export function exportProjectMarkdown(projectId: string) {
 }
 
 export function importProjectData(rawText: string, options?: { targetProjectId?: string }) {
+  console.info('[importProjectData] 読み込み開始');
   const parsed = JSON.parse(rawText) as any;
   if (!parsed || parsed.format !== 'novel-writing-tool-project' || !parsed.project) {
     throw new Error('対応していないJSON形式です。');
@@ -2097,6 +2495,24 @@ export function importProjectData(rawText: string, options?: { targetProjectId?:
     ...cloneValue(tag),
     id: remap(tag.id),
     projectId: newProjectId,
+    relatedTagIds: mapIds(tag.relatedTagIds, idMap),
+    summaryItems: (tag.summaryItems ?? []).map((item) => ({ ...cloneValue(item), id: remap(item.id) })),
+    versions: (tag.versions ?? []).map((version) => ({
+      ...cloneValue(version),
+      id: remap(version.id),
+      relatedTagIds: mapIds(version.relatedTagIds, idMap),
+      summaryItems: (version.summaryItems ?? []).map((item) => ({ ...cloneValue(item), id: remap(item.id) })),
+      baseSnapshot: version.baseSnapshot
+        ? {
+          ...cloneValue(version.baseSnapshot),
+          relatedTagIds: mapIds(version.baseSnapshot.relatedTagIds, idMap),
+          summaryItems: (version.baseSnapshot.summaryItems ?? []).map((item) => ({ ...cloneValue(item), id: remap(item.id) })),
+        }
+        : version.baseSnapshot,
+    })),
+    activeVersionId: mapId(tag.activeVersionId, idMap),
+    createdAt: tag.createdAt ?? now,
+    updatedAt: tag.updatedAt ?? now,
   }));
 
   const importedCharacters: Character[] = (parsed.characters ?? []).map((character: Character) => {
@@ -2305,10 +2721,13 @@ export function importProjectData(rawText: string, options?: { targetProjectId?:
   ensureDefaultGenreTags(newProjectId);
   ensureDefaultCharacterProfileFields(importedProject);
   ensureEpisodeChapters(newProjectId);
+  migrateTermsToTags({ log: true });
+  console.info('[importProjectData] 読み込み完了', { projectId: newProjectId });
   return importedProject.id;
 }
 
 export function importBackup(rawText: string) {
+  console.info('[importBackup] 読み込み開始');
   const parsed = JSON.parse(rawText) as any;
 
   if (parsed?.format === 'novel-writing-tool-project') {
@@ -2346,12 +2765,13 @@ export function importBackup(rawText: string) {
     ensureDefaultGenreTags(project.id);
     ensureDefaultCharacterProfileFields(project);
     ensureEpisodeChapters(project.id);
-  });
-  dedupeWorkPlots();
+});
+dedupeWorkPlots();
   dataStore.characters.forEach((character) => {
     ensureCharacterVersions(character);
     applyActiveCharacterVersion(character);
   });
+  migrateTermsToTags({ log: true });
   dataStore.terms.forEach((term) => {
     ensureTermVersions(term);
     applyActiveTermVersion(term);
@@ -2362,8 +2782,19 @@ export function importBackup(rawText: string) {
   dataStore.tags.forEach((tag) => {
     if ((tag.status as string) === 'deleted') tag.status = 'hidden';
     if (legacyTagTypeMap[tag.type]) tag.type = legacyTagTypeMap[tag.type];
+    tag.relatedTagIds ??= [];
+    tag.summaryItems ??= [];
+    tag.createdAt ??= nowIso();
+    tag.updatedAt ??= tag.createdAt;
+    ensureTagVersions(tag);
+    applyActiveTagVersion(tag);
   });
   dedupeProjectTags();
+  console.info('[importBackup] 読み込み完了', {
+    projects: dataStore.projects.length,
+    tags: dataStore.tags.length,
+    terms: dataStore.terms.length,
+  });
 
   return {
     type: 'app' as const,
