@@ -26,16 +26,37 @@ const newMemoLine = ref(1);
 const newMemoType = ref<MemoType>('revision');
 const newMemoContent = ref('');
 const editorPanelCollapsed = ref(false);
-const editorTab = ref<'info' | 'memo' | 'export'>('info');
+const editorTab = ref<'info' | 'memo' | 'export' | 'settings'>('info');
+const infoTab = ref<'chapter' | 'episode' | 'scene'>('episode');
 const memoPopover = ref<{ memo: LineMemo; top: number } | null>(null);
 const memoPopoverPinned = ref(false);
 const visualLineCounts = ref<number[]>([]);
+const editorFontFamily = ref(localStorage.getItem('editor-font-family') ?? "'Yu Gothic', 'Hiragino Sans', monospace");
+const editorFontSize = ref(Number(localStorage.getItem('editor-font-size') ?? '28'));
 getProjectNavigatorSelection(projectId);
+
+const fontFamilyOptions = [
+  { label: '游ゴシック', value: "'Yu Gothic', 'Hiragino Sans', monospace" },
+  { label: 'メイリオ', value: "Meiryo, 'Hiragino Sans', sans-serif" },
+  { label: 'ゴシック体', value: "'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif" },
+  { label: '明朝体', value: "'Yu Mincho', 'Hiragino Mincho ProN', serif" },
+  { label: '等幅', value: "ui-monospace, SFMono-Regular, Consolas, monospace" },
+] as const;
+const fontSizeOptions = [20, 24, 28, 32, 36];
+const editorTextStyle = computed(() => ({
+  fontFamily: editorFontFamily.value,
+  fontSize: `${editorFontSize.value}px`,
+}));
+const editorLineNumberStyle = computed(() => ({
+  fontSize: `${Math.max(18, editorFontSize.value - 4)}px`,
+}));
 
 const chapters = computed(() => dataStore.chapters.filter((chapter) => chapter.projectId === projectId).sort((a, b) => a.number - b.number));
 const episodes = computed(() => dataStore.episodes.filter((episode) => episode.projectId === projectId).sort((a, b) => a.number - b.number));
 const scenes = computed(() => dataStore.scenes.filter((scene) => scene.projectId === projectId));
 const bodyDrafts = computed(() => dataStore.bodyDrafts.filter((draft) => draft.projectId === projectId));
+const characters = computed(() => dataStore.characters.filter((character) => character.projectId === projectId));
+const tags = computed(() => dataStore.tags.filter((tag) => tag.projectId === projectId));
 
 const selectedChapter = computed(() => chapters.value.find((chapter) => chapter.id === selectedChapterId.value));
 const selectedEpisode = computed(() => episodes.value.find((episode) => episode.id === selectedEpisodeId.value));
@@ -89,6 +110,22 @@ const selectedModeLabel = computed(() => {
   if (selectedKind.value === 'chapter') return '章選択';
   return selectedKind.value === 'scene' ? 'シーン本文' : '話本文（シーン結合表示）';
 });
+const characterNameMap = computed(() => new Map(characters.value.map((character) => [character.id, character.name])));
+const tagNameMap = computed(() => new Map(tags.value.map((tag) => [tag.id, tag.name])));
+const selectedEpisodeCharacterNames = computed(() =>
+  (selectedEpisode.value?.characterIds ?? []).map((id) => characterNameMap.value.get(id)).filter((name): name is string => Boolean(name))
+);
+const selectedEpisodeTagNames = computed(() =>
+  (selectedEpisode.value?.tagIds ?? []).map((id) => tagNameMap.value.get(id)).filter((name): name is string => Boolean(name))
+);
+const selectedSceneCharacterNames = computed(() =>
+  (selectedScene.value?.characterIds ?? []).map((id) => characterNameMap.value.get(id)).filter((name): name is string => Boolean(name))
+);
+const selectedSceneTagNames = computed(() =>
+  (selectedScene.value?.tagIds ?? []).map((id) => tagNameMap.value.get(id)).filter((name): name is string => Boolean(name))
+);
+const hasText = (value?: string | null) => Boolean(value?.trim());
+const hasItems = (items?: string[]) => Boolean(items?.length);
 
 function syncLineViewScroll() {
   if (!bodyTextareaRef.value || !lineViewRef.value) return;
@@ -165,6 +202,9 @@ function selectChapter(chapterId: string) {
   selectedSceneId.value = '';
   collapsedChapterIds.value = collapsedChapterIds.value.filter((id) => id !== chapterId);
   clearMemoPopover();
+  editorPanelCollapsed.value = false;
+  editorTab.value = 'info';
+  infoTab.value = 'chapter';
 }
 
 function selectEpisode(episodeId: string) {
@@ -179,6 +219,7 @@ function selectEpisode(episodeId: string) {
   clearMemoPopover();
   editorPanelCollapsed.value = false;
   editorTab.value = 'info';
+  infoTab.value = 'episode';
 }
 
 function selectScene(sceneId: string) {
@@ -195,6 +236,7 @@ function selectScene(sceneId: string) {
   clearMemoPopover();
   editorPanelCollapsed.value = false;
   editorTab.value = 'memo';
+  infoTab.value = 'scene';
 }
 
 function addChapter() {
@@ -390,6 +432,16 @@ watch(
   }
 );
 
+watch(editorFontFamily, (value) => {
+  localStorage.setItem('editor-font-family', value);
+  measureWrappedLineCounts();
+});
+
+watch(editorFontSize, (value) => {
+  localStorage.setItem('editor-font-size', String(value));
+  measureWrappedLineCounts();
+});
+
 watch(
   [selectedKind, selectedChapterId, selectedEpisodeId, selectedSceneId],
   ([kind, chapterId, episodeId, sceneId]) => {
@@ -572,6 +624,8 @@ function handleDocumentClick(event: MouseEvent) {
       v-else-if="selectedEpisode"
       class="editor-workspace"
       :class="{
+        'scene-workspace': selectedKind === 'scene',
+        'episode-workspace': selectedKind === 'episode',
         'panel-minimized': editorPanelCollapsed && selectedKind === 'scene',
         'no-lower-panel': selectedKind === 'episode',
       }"
@@ -585,10 +639,10 @@ function handleDocumentClick(event: MouseEvent) {
         話を開いているため、配下シーンの本文を結合表示しています。編集はシーンを選択したときだけ行います。
       </div>
 
-      <section class="card editor-pane-card">
+      <section class="card editor-pane-card" :class="{ 'scene-pane-card': selectedKind === 'scene' }">
         <div class="editor-pane">
         <div class="vscode-editor" :class="{ 'merged-episode-view': selectedKind === 'episode' }">
-          <div ref="lineViewRef" class="line-view">
+          <div ref="lineViewRef" class="line-view" :style="editorLineNumberStyle">
             <div class="line-view-inner">
               <button
                 v-for="(line, index) in displayedLines"
@@ -609,6 +663,7 @@ function handleDocumentClick(event: MouseEvent) {
             ref="bodyTextareaRef"
             class="body-textarea auto-textarea"
             :class="{ readonly: selectedKind === 'episode' }"
+            :style="editorTextStyle"
             :readonly="selectedKind === 'episode'"
             :value="displayedContent"
             @scroll="syncLineViewScroll"
@@ -620,9 +675,13 @@ function handleDocumentClick(event: MouseEvent) {
           <p>{{ memoPopover.memo.content }}</p>
         </div>
         </div>
+        <div v-if="selectedKind === 'scene'" class="scene-editor-meta">
+          <span>文字数 {{ charCount }}</span>
+          <span>行数 {{ displayedLines.length }}</span>
+        </div>
       </section>
 
-      <section v-if="selectedKind === 'scene'" class="card editor-lower-panel" :class="{ collapsed: editorPanelCollapsed }">
+      <section v-if="selectedKind === 'scene'" class="card editor-lower-panel scene-lower-panel" :class="{ collapsed: editorPanelCollapsed }">
         <div class="editor-panel-tabs">
           <button
             type="button"
@@ -648,19 +707,75 @@ function handleDocumentClick(event: MouseEvent) {
           >
             出力
           </button>
+          <button
+            type="button"
+            class="editor-panel-tab"
+            :class="{ active: editorTab === 'settings' }"
+            @click="editorTab = 'settings'"
+          >
+            設定
+          </button>
           <button type="button" class="secondary editor-panel-toggle" @click="editorPanelCollapsed = !editorPanelCollapsed">
             {{ editorPanelCollapsed ? '展開' : '最小化' }}
           </button>
         </div>
         <div v-if="!editorPanelCollapsed" class="editor-panel-body">
           <div v-if="editorTab === 'info'" class="editor-panel-section">
-            <div class="counter-bar">
-              <span>文字数 {{ charCount }}</span>
-              <span>行数 {{ displayedLines.length }}</span>
-              <span>空行 {{ blankLineCount }}</span>
-              <span>会話 {{ dialogueCount }}</span>
-              <span>メモ {{ selectedKind === 'scene' ? memos.length : 0 }}</span>
+            <div class="info-tab-bar">
+              <button type="button" class="editor-panel-tab info-subtab" :class="{ active: infoTab === 'chapter' }" @click="infoTab = 'chapter'">章</button>
+              <button type="button" class="editor-panel-tab info-subtab" :class="{ active: infoTab === 'episode' }" @click="infoTab = 'episode'">話</button>
+              <button
+                type="button"
+                class="editor-panel-tab info-subtab"
+                :class="{ active: infoTab === 'scene' }"
+                :disabled="selectedKind !== 'scene' || !selectedScene"
+                @click="infoTab = 'scene'"
+              >
+                シーン
+              </button>
             </div>
+
+            <section v-if="infoTab === 'chapter' && selectedChapter" class="info-block">
+              <strong class="info-block-title">章プロット</strong>
+              <div class="info-list">
+                <div v-if="hasText(selectedChapter.purpose)" class="info-row"><span>章の目的</span><p>{{ selectedChapter.purpose }}</p></div>
+                <div v-if="hasText(selectedChapter.flow)" class="info-row"><span>章の流れ</span><p>{{ selectedChapter.flow }}</p></div>
+                <div v-if="hasText(selectedChapter.memo)" class="info-row"><span>メモ</span><p>{{ selectedChapter.memo }}</p></div>
+              </div>
+            </section>
+
+            <section v-if="infoTab === 'episode' && selectedEpisode" class="info-block">
+              <strong class="info-block-title">話プロット</strong>
+              <div class="info-list">
+                <div v-if="hasText(selectedEpisode.purpose)" class="info-row"><span>この話の目的</span><p>{{ selectedEpisode.purpose }}</p></div>
+                <div v-if="hasItems(selectedEpisodeCharacterNames)" class="info-row"><span>登場人物</span><p>{{ selectedEpisodeCharacterNames.join(' / ') }}</p></div>
+                <div v-if="hasItems(selectedEpisodeTagNames)" class="info-row"><span>関連タグ</span><p>{{ selectedEpisodeTagNames.join(' / ') }}</p></div>
+                <div v-if="hasText(selectedEpisode.startSituation)" class="info-row"><span>開始状況</span><p>{{ selectedEpisode.startSituation }}</p></div>
+                <div v-if="hasText(selectedEpisode.mainEvent)" class="info-row"><span>起きる事件</span><p>{{ selectedEpisode.mainEvent }}</p></div>
+                <div v-if="hasText(selectedEpisode.revealInfo)" class="info-row"><span>明かす情報</span><p>{{ selectedEpisode.revealInfo }}</p></div>
+                <div v-if="hasText(selectedEpisode.hiddenInfo)" class="info-row"><span>隠す情報</span><p>{{ selectedEpisode.hiddenInfo }}</p></div>
+                <div v-if="hasText(selectedEpisode.foreshadowing)" class="info-row"><span>伏線</span><p>{{ selectedEpisode.foreshadowing }}</p></div>
+                <div v-if="hasText(selectedEpisode.endingHook)" class="info-row"><span>ラストの引き</span><p>{{ selectedEpisode.endingHook }}</p></div>
+                <div v-if="hasText(selectedEpisode.memo)" class="info-row"><span>本文メモ</span><p>{{ selectedEpisode.memo }}</p></div>
+              </div>
+            </section>
+
+            <section v-if="infoTab === 'scene' && selectedKind === 'scene' && selectedScene" class="info-block">
+              <strong class="info-block-title">シーンプロット</strong>
+              <div class="info-list">
+                <div v-if="hasText(selectedScene.location)" class="info-row"><span>場所</span><p>{{ selectedScene.location }}</p></div>
+                <div v-if="hasText(selectedScene.time)" class="info-row"><span>時間</span><p>{{ selectedScene.time }}</p></div>
+                <div v-if="hasItems(selectedSceneCharacterNames)" class="info-row"><span>登場人物</span><p>{{ selectedSceneCharacterNames.join(' / ') }}</p></div>
+                <div v-if="hasText(selectedScene.event)" class="info-row"><span>起きること</span><p>{{ selectedScene.event }}</p></div>
+                <div v-if="hasText(selectedScene.conversationPurpose)" class="info-row"><span>会話の目的</span><p>{{ selectedScene.conversationPurpose }}</p></div>
+                <div v-if="hasText(selectedScene.conflict)" class="info-row"><span>衝突</span><p>{{ selectedScene.conflict }}</p></div>
+                <div v-if="hasText(selectedScene.result)" class="info-row"><span>結果</span><p>{{ selectedScene.result }}</p></div>
+                <div v-if="hasText(selectedScene.nextHook)" class="info-row"><span>次への繋ぎ</span><p>{{ selectedScene.nextHook }}</p></div>
+                <div v-if="hasItems(selectedSceneTagNames)" class="info-row"><span>関連タグ</span><p>{{ selectedSceneTagNames.join(' / ') }}</p></div>
+                <div v-if="hasText(selectedScene.memo)" class="info-row"><span>メモ</span><p>{{ selectedScene.memo }}</p></div>
+              </div>
+            </section>
+
           </div>
 
           <div v-if="editorTab === 'memo'" class="editor-panel-section">
@@ -680,6 +795,21 @@ function handleDocumentClick(event: MouseEvent) {
               <button class="secondary" @click="exportText(false)">本文のみtxt出力</button>
               <button v-if="selectedKind === 'scene'" class="secondary" @click="exportText(true)">メモ付きtxt出力</button>
             </div>
+          </div>
+
+          <div v-if="editorTab === 'settings'" class="editor-panel-section">
+            <label class="field">
+              <span>フォント</span>
+              <select v-model="editorFontFamily">
+                <option v-for="option in fontFamilyOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>文字サイズ</span>
+              <select v-model.number="editorFontSize">
+                <option v-for="size in fontSizeOptions" :key="size" :value="size">{{ size }}px</option>
+              </select>
+            </label>
           </div>
         </div>
       </section>
