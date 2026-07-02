@@ -30,6 +30,9 @@ const episodeTagRemoveModalOpen = ref(false);
 const sceneCharacterAddModalOpen = ref(false);
 const sceneCharacterRemoveModalOpen = ref(false);
 const deleteTarget = ref<{ kind: 'chapter' | 'episode' | 'scene'; id: string; label: string } | null>(null);
+const episodeCharacterDeleteTarget = ref<SelectionModalItem | null>(null);
+const episodeTagDeleteTarget = ref<SelectionModalItem | null>(null);
+const sceneCharacterDeleteTarget = ref<SelectionModalItem | null>(null);
 getProjectNavigatorSelection(projectId);
 
 const workPlot = computed(() => getWorkPlot(projectId) ?? initialWorkPlot);
@@ -344,9 +347,15 @@ function addEpisodeCharacter(item: SelectionModalItem) {
 }
 
 function removeEpisodeCharacter(item: SelectionModalItem) {
+  episodeCharacterDeleteTarget.value = item;
+}
+
+function confirmRemoveEpisodeCharacter() {
+  if (!selectedEpisode.value || !episodeCharacterDeleteTarget.value) return;
   if (!selectedEpisode.value) return;
-  selectedEpisode.value.characterIds = selectedEpisode.value.characterIds.filter((id) => id !== item.id);
+  selectedEpisode.value.characterIds = selectedEpisode.value.characterIds.filter((id) => id !== episodeCharacterDeleteTarget.value?.id);
   episodeCharacterRemoveModalOpen.value = false;
+  episodeCharacterDeleteTarget.value = null;
 }
 
 function addEpisodeTag(item: SelectionModalItem) {
@@ -356,9 +365,15 @@ function addEpisodeTag(item: SelectionModalItem) {
 }
 
 function removeEpisodeTag(item: SelectionModalItem) {
+  episodeTagDeleteTarget.value = item;
+}
+
+function confirmRemoveEpisodeTag() {
+  if (!selectedEpisode.value || !episodeTagDeleteTarget.value) return;
   if (!selectedEpisode.value) return;
-  selectedEpisode.value.tagIds = selectedEpisode.value.tagIds.filter((id) => id !== item.id);
+  selectedEpisode.value.tagIds = selectedEpisode.value.tagIds.filter((id) => id !== episodeTagDeleteTarget.value?.id);
   episodeTagRemoveModalOpen.value = false;
+  episodeTagDeleteTarget.value = null;
 }
 
 function addSceneCharacter(item: SelectionModalItem) {
@@ -368,9 +383,15 @@ function addSceneCharacter(item: SelectionModalItem) {
 }
 
 function removeSceneCharacter(item: SelectionModalItem) {
+  sceneCharacterDeleteTarget.value = item;
+}
+
+function confirmRemoveSceneCharacter() {
+  if (!selectedScene.value || !sceneCharacterDeleteTarget.value) return;
   if (!selectedScene.value) return;
-  selectedScene.value.characterIds = selectedScene.value.characterIds.filter((id) => id !== item.id);
+  selectedScene.value.characterIds = selectedScene.value.characterIds.filter((id) => id !== sceneCharacterDeleteTarget.value?.id);
   sceneCharacterRemoveModalOpen.value = false;
+  sceneCharacterDeleteTarget.value = null;
 }
 </script>
 
@@ -378,7 +399,9 @@ function removeSceneCharacter(item: SelectionModalItem) {
   <AppHeader :project-id="projectId" title="プロット" />
   <main class="page split-page">
     <section class="card side-list fixed-side-list">
-      
+      <div class="term-side-toolbar">
+        <button type="button" @click="addChapter">＋ 章追加</button>
+      </div>
       <div class="scroll-list plot-tree" data-tree-root="plot">
         <section class="plot-tree-group" data-tree-level="work">
           <div
@@ -395,9 +418,6 @@ function removeSceneCharacter(item: SelectionModalItem) {
             <span class="plot-tree-label">作品全体プロット</span>
           </div>
         </section>
-        <div class="term-side-toolbar">
-          <button type="button" @click="addChapter">＋ 章追加</button>
-        </div>
 
         <section
           v-for="chapter in chapters"
@@ -640,6 +660,30 @@ function removeSceneCharacter(item: SelectionModalItem) {
       confirm-label="削除"
       @close="deleteTarget = null"
       @confirm="confirmDeleteTarget"
+    />
+    <ConfirmModal
+      :open="Boolean(episodeCharacterDeleteTarget)"
+      title="登場人物を削除"
+      :message="`「${episodeCharacterDeleteTarget?.label || ''}」をこの話の登場人物から外します。`"
+      confirm-label="人物を削除"
+      @close="episodeCharacterDeleteTarget = null"
+      @confirm="confirmRemoveEpisodeCharacter"
+    />
+    <ConfirmModal
+      :open="Boolean(episodeTagDeleteTarget)"
+      title="関連タグを削除"
+      :message="`「${episodeTagDeleteTarget?.label || ''}」をこの話の関連タグから外します。`"
+      confirm-label="タグを削除"
+      @close="episodeTagDeleteTarget = null"
+      @confirm="confirmRemoveEpisodeTag"
+    />
+    <ConfirmModal
+      :open="Boolean(sceneCharacterDeleteTarget)"
+      title="登場人物を削除"
+      :message="`「${sceneCharacterDeleteTarget?.label || ''}」をこのシーンの登場人物から外します。`"
+      confirm-label="人物を削除"
+      @close="sceneCharacterDeleteTarget = null"
+      @confirm="confirmRemoveSceneCharacter"
     />
   </main>
 </template>

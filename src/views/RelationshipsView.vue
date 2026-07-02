@@ -45,19 +45,21 @@ function addRelationship() {
 <template>
   <AppHeader :project-id="projectId" title="相関図" />
   <main class="page split-page">
-    <section class="card side-list">
+    <section class="card side-list fixed-side-list">
       <button :disabled="characters.length < 1" @click="addRelationship">＋ 関係追加</button>
-      <p v-if="characters.length < 1" class="hint-text">先に人物を追加してください。</p>
-      <button
-        v-for="relationship in relationships"
-        :key="relationship.id"
-        class="list-button"
-        :class="{ active: relationship.id === selectedId }"
-        @click="selectedId = relationship.id"
-      >
-        {{ characterName(relationship.characterAId) }} → {{ characterName(relationship.characterBId) }}
-        <small>{{ relationship.relationType }}</small>
-      </button>
+      <div class="scroll-list">
+        <p v-if="characters.length < 1" class="hint-text">先に人物を追加してください。</p>
+        <button
+          v-for="relationship in relationships"
+          :key="relationship.id"
+          class="list-button"
+          :class="{ active: relationship.id === selectedId }"
+          @click="selectedId = relationship.id"
+        >
+          {{ characterName(relationship.characterAId) }} → {{ characterName(relationship.characterBId) }}
+          <small>{{ relationship.relationType }}</small>
+        </button>
+      </div>
     </section>
 
     <section v-if="selected" class="card editor-card line-form-card">

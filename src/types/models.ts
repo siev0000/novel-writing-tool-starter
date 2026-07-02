@@ -16,6 +16,7 @@ export interface NovelProject {
   genre: string;
   genreTagId?: ID;
   genreTagIds?: ID[];
+  customTagTypes?: string[];
   characterProfileFields?: CharacterProfileField[];
   summary: string;
   memo: string;
@@ -138,12 +139,48 @@ export interface Tag {
   id: ID;
   projectId: ID;
   name: string;
+  ruby?: string;
   type: string;
   category?: string;
   color: string;
+  relatedTagIds: ID[];
+  summaryItems?: TagSummaryItem[];
+  description?: string;
+  shortDescription?: string;
   memo: string;
   source: TagSource;
   status: Status;
+  versions?: TagVersion[];
+  activeVersionId?: ID;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TagSummaryItem {
+  id: ID;
+  title: string;
+  content: string;
+}
+
+export interface TagVersionData {
+  name: string;
+  ruby?: string;
+  type: string;
+  category?: string;
+  color: string;
+  relatedTagIds: ID[];
+  summaryItems: TagSummaryItem[];
+  description?: string;
+  shortDescription?: string;
+  memo: string;
+  status: Status;
+}
+
+export interface TagVersion extends TagVersionData {
+  id: ID;
+  createdAt: string;
+  updatedAt: string;
+  baseSnapshot?: TagVersionData;
 }
 
 export interface Term {

@@ -75,6 +75,7 @@ const deleteTargetModalOpen = ref(false);
 const characterDeleteTargetId = ref('');
 const characterVersionDeleteTargetId = ref('');
 const relationshipDeleteTargetId = ref('');
+const relatedTagDeleteTarget = ref<SelectionModalItem | null>(null);
 const characters = computed(() => dataStore.characters.filter((c) => c.projectId === projectId));
 const tags = computed(() => dataStore.tags.filter((tag) => tag.projectId === projectId && tag.status === 'active' && tag.type !== 'ジャンルタグ'));
 const relationships = computed(() => dataStore.relationships.filter((relationship) => relationship.projectId === projectId));
@@ -217,6 +218,7 @@ watch(selectedId, () => {
   characterDeleteTargetId.value = '';
   characterVersionDeleteTargetId.value = '';
   relationshipDeleteTargetId.value = '';
+  relatedTagDeleteTarget.value = null;
 });
 
 watch(groupedProfileFields, (groups) => {
@@ -329,7 +331,13 @@ function removeTag(tagId: string) {
 }
 
 function removeTagByItem(item: SelectionModalItem) {
-  removeTag(item.id);
+  relatedTagDeleteTarget.value = item;
+}
+
+function confirmRemoveTag() {
+  if (!relatedTagDeleteTarget.value) return;
+  removeTag(relatedTagDeleteTarget.value.id);
+  relatedTagDeleteTarget.value = null;
 }
 
 function toggleTagActions() {
@@ -502,13 +510,15 @@ function toggleProfileSection(section: string) {
         </div>
         <section class="name-display-row compact-name-row">
           <div class="field-label-value">
-            <strong class="section-label">名前</strong>
+            <div class="name-label-line">
+              <button type="button" class="inline-edit-button" @click="nameModalOpen = true">✎</button>
+              <strong class="section-label">名前</strong>
+            </div>
             <span class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
               <span v-if="selected.ruby" class="ruby-text">{{ selected.ruby }}</span>
               <span class="ruby-base">{{ selected.name || '名前未設定' }}</span>
             </span>
           </div>
-          <button type="button" class="secondary" @click="nameModalOpen = true">変更</button>
         </section>
         <section class="inline-panel tag-panel" @click="toggleTagActions">
           <div class="panel-heading">
@@ -642,6 +652,14 @@ function toggleProfileSection(section: string) {
       confirm-label="相関を削除"
       @close="relationshipDeleteTargetId = ''"
       @confirm="confirmDeleteRelationship"
+    />
+    <ConfirmModal
+      :open="Boolean(relatedTagDeleteTarget)"
+      title="関連タグを削除"
+      :message="`「${relatedTagDeleteTarget?.label || ''}」を関連タグから外します。`"
+      confirm-label="関連タグを削除"
+      @close="relatedTagDeleteTarget = null"
+      @confirm="confirmRemoveTag"
     />
   </main>
 </template>
