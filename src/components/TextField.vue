@@ -16,13 +16,21 @@ const normalizedOptions = computed(() => (props.options ?? []).filter((option) =
 const usesRadioOptions = computed(() => props.type === 'select' && normalizedOptions.value.length === 2);
 const radioGroupName = `profile-field-${Math.random().toString(36).slice(2)}`;
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+let textareaResizeObserver: ResizeObserver | null = null;
 const textareaRows = computed(() => {
   const lineCount = props.modelValue.split('\n').length;
-  return Math.max(1, Math.min(4, lineCount));
+  return Math.max(1, lineCount);
 });
 
 function syncTextareaHeight() {
-  resizeTextarea(textareaRef.value, 15);
+  resizeTextarea(textareaRef.value);
+}
+
+function scheduleTextareaHeightSync() {
+  requestAnimationFrame(() => {
+    syncTextareaHeight();
+    requestAnimationFrame(syncTextareaHeight);
+  });
 }
 
 watch(
@@ -30,7 +38,7 @@ watch(
   async () => {
     if (props.type !== 'textarea') return;
     await nextTick();
-    syncTextareaHeight();
+    scheduleTextareaHeightSync();
   },
   { immediate: true }
 );
@@ -39,18 +47,31 @@ watch(
   () => props.type,
   async () => {
     await nextTick();
-    syncTextareaHeight();
+    scheduleTextareaHeightSync();
   },
   { immediate: true }
 );
 
 onMounted(() => {
-  window.addEventListener('resize', syncTextareaHeight);
-  syncTextareaHeight();
+  window.addEventListener('resize', scheduleTextareaHeightSync);
+  if (typeof ResizeObserver !== 'undefined') {
+    textareaResizeObserver = new ResizeObserver(() => {
+      scheduleTextareaHeightSync();
+    });
+    if (textareaRef.value) {
+      textareaResizeObserver.observe(textareaRef.value);
+      if (textareaRef.value.parentElement) {
+        textareaResizeObserver.observe(textareaRef.value.parentElement);
+      }
+    }
+  }
+  scheduleTextareaHeightSync();
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', syncTextareaHeight);
+  window.removeEventListener('resize', scheduleTextareaHeightSync);
+  textareaResizeObserver?.disconnect();
+  textareaResizeObserver = null;
 });
 </script>
 
@@ -91,6 +112,7 @@ onBeforeUnmount(() => {
       :value="modelValue"
       :placeholder="placeholder"
       :rows="textareaRows"
+      @focus="scheduleTextareaHeightSync"
       @input="$emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
     />
   </label>

@@ -9,7 +9,7 @@ import CharacterNameModal from '../components/CharacterNameModal.vue';
 import CharacterRelationshipModal from '../components/CharacterRelationshipModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
-import { DEFAULT_CHARACTER_COLOR, tagColorItems } from '../constants/colorPalette';
+import { DEFAULT_CHARACTER_COLOR, getColorDisplayLabel, getColorPaletteItem, tagColorItems } from '../constants/colorPalette';
 import TextField from '../components/TextField.vue';
 import {
   activateCharacterVersion,
@@ -103,11 +103,10 @@ const selected = computed(() => dataStore.characters.find((c) => c.id === select
 const selectedVersions = computed(() => selected.value?.versions ?? []);
 const activeVersion = computed(() => (selected.value ? getCharacterActiveVersion(selected.value) : undefined));
 const activeVersionChanged = computed(() => (activeVersion.value ? isCharacterVersionChanged(activeVersion.value) : false));
-const selectedColorItem = computed(() => tagColorItems.find((item) => item.id === selected.value?.color));
+const selectedColorItem = computed(() => getColorPaletteItem(selected.value?.color));
 const selectedColorSummary = computed(() => {
   if (!selected.value) return '';
-  if (!selectedColorItem.value) return selected.value.color;
-  return `${selected.value.color} / ${selectedColorItem.value.family} ${selectedColorItem.value.shade}`;
+  return getColorDisplayLabel(selected.value.color);
 });
 const tagFilterItems = computed<SelectionModalItem[]>(() => [
   { id: 'すべて', label: 'すべて', category: 'タグ検索' },
@@ -646,7 +645,7 @@ function toggleProfileSection(section: string) {
                 <button v-if="isEditing" type="button" class="inline-edit-button" @click="colorModalOpen = true">✎</button>
                 <span>色</span>
               </div>
-              <div class="select-summary color-summary-lined" :style="{ borderLeftColor: selected.color || DEFAULT_CHARACTER_COLOR }">
+              <div class="select-summary color-summary-lined" :style="{ borderLeftColor: selected.color || DEFAULT_CHARACTER_COLOR, color: selected.color || DEFAULT_CHARACTER_COLOR }">
                 <strong>{{ selectedColorSummary }}</strong>
               </div>
             </section>
@@ -726,7 +725,7 @@ function toggleProfileSection(section: string) {
         :open="colorModalOpen"
         title="人物色一覧"
         :items="tagColorItems"
-        :selected-id="selected?.color || ''"
+        :selected-id="selectedColorItem?.id || ''"
         @close="colorModalOpen = false"
         @select="updateCharacterColor"
       />

@@ -103,3 +103,51 @@ export const tagColorItems: ColorPaletteItem[] = [
 ];
 
 export const DEFAULT_CHARACTER_COLOR = '#607d8b';
+
+function normalizeHex(color?: string) {
+  return color?.trim().toLowerCase() ?? '';
+}
+
+function parseHexColor(color?: string) {
+  const normalized = normalizeHex(color);
+  const match = normalized.match(/^#([0-9a-f]{6})$/i);
+  if (!match) return undefined;
+  const hex = match[1];
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
+  };
+}
+
+function getColorDistance(a?: string, b?: string) {
+  const colorA = parseHexColor(a);
+  const colorB = parseHexColor(b);
+  if (!colorA || !colorB) return Number.POSITIVE_INFINITY;
+  return ((colorA.r - colorB.r) ** 2) + ((colorA.g - colorB.g) ** 2) + ((colorA.b - colorB.b) ** 2);
+}
+
+export function getColorPaletteItem(color?: string) {
+  if (!color) return undefined;
+  const normalized = normalizeHex(color);
+  const exact = tagColorItems.find((item) => normalizeHex(item.id) === normalized);
+  if (exact) return exact;
+
+  let nearest = tagColorItems[0];
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  tagColorItems.forEach((item) => {
+    const distance = getColorDistance(color, item.id);
+    if (distance < nearestDistance) {
+      nearest = item;
+      nearestDistance = distance;
+    }
+  });
+  return nearest;
+}
+
+export function getColorDisplayLabel(color?: string) {
+  if (!color) return '';
+  const item = getColorPaletteItem(color);
+  if (!item) return color;
+  return `${item.family}${item.shade}`;
+}

@@ -45,12 +45,10 @@ function paletteItem(family: string, shade: string) {
         </header>
 
         <div class="palette-table-wrap">
-          <div class="palette-table" :style="{ gridTemplateColumns: `72px repeat(${families.length}, minmax(56px, 1fr))` }">
-            <div class="palette-corner"></div>
+          <div class="palette-table" :style="{ gridTemplateColumns: `repeat(10, minmax(42px, 1fr))` }">
             <div v-for="family in families" :key="family" class="palette-family">{{ family }}</div>
 
             <template v-for="shade in shades" :key="shade">
-              <div class="palette-shade">{{ shade }}</div>
               <button
                 v-for="family in families"
                 :key="`${family}-${shade}`"

@@ -8,7 +8,7 @@ import type { SelectionModalItem } from '../components/SelectionModal.vue';
 import TextField from '../components/TextField.vue';
 import { dataStore, deleteChapter, deleteEpisode, deleteScene, ensureEpisodeChapters, ensureWorkPlot, getProjectNavigatorSelection, getWorkPlot, setProjectNavigatorSelection, transientStore } from '../store/data';
 import { createId } from '../utils/id';
-import type { Chapter, Episode, MiddleEvent, Scene } from '../types/models';
+import type { Chapter, Episode, Scene } from '../types/models';
 
 type PlotSelectionKind = 'workPlot' | 'chapter' | 'episode' | 'scene';
 
@@ -22,6 +22,7 @@ const selectedEpisodeId = ref('');
 const selectedSceneId = ref('');
 const collapsedChapterIds = ref<string[]>([]);
 const collapsedEpisodeIds = ref<string[]>([]);
+const leftSidebarCollapsed = ref(false);
 
 const episodeCharacterAddModalOpen = ref(false);
 const episodeCharacterRemoveModalOpen = ref(false);
@@ -43,6 +44,33 @@ const chapterEpisodes = computed(() => episodes.value.filter((episode) => episod
 const selectedEpisode = computed(() => dataStore.episodes.find((episode) => episode.id === selectedEpisodeId.value));
 const scenes = computed(() => dataStore.scenes.filter((scene) => scene.episodeId === selectedEpisodeId.value));
 const selectedScene = computed(() => dataStore.scenes.find((scene) => scene.id === selectedSceneId.value));
+const selectedSceneNumber = computed(() => {
+  if (!selectedScene.value || !selectedEpisode.value) return null;
+  const index = dataStore.scenes
+    .filter((scene) => scene.episodeId === selectedEpisode.value?.id)
+    .findIndex((scene) => scene.id === selectedScene.value?.id);
+  return index >= 0 ? index + 1 : null;
+});
+const selectedChapterHeaderLabel = computed(() => {
+  if (!selectedChapter.value) return '';
+  return `${selectedChapter.value.number}章`;
+});
+const selectedEpisodeHeaderLabel = computed(() => {
+  if (!selectedEpisode.value) return '';
+  const chapterNumber = selectedChapter.value?.number;
+  return chapterNumber ? `${chapterNumber}章 ${selectedEpisode.value.number}話` : `${selectedEpisode.value.number}話`;
+});
+const selectedSceneHeaderLabel = computed(() => {
+  if (!selectedScene.value) return '';
+  const chapterNumber = selectedChapter.value?.number;
+  const episodeNumber = selectedEpisode.value?.number;
+  const sceneNumber = selectedSceneNumber.value;
+  const parts = [];
+  if (chapterNumber) parts.push(`${chapterNumber}章`);
+  if (episodeNumber) parts.push(`${episodeNumber}話`);
+  if (sceneNumber) parts.push(`シーン${sceneNumber}`);
+  return parts.join(' ');
+});
 const characters = computed(() => dataStore.characters.filter((character) => character.projectId === projectId));
 const tags = computed(() => dataStore.tags.filter((tag) => tag.projectId === projectId && tag.status === 'active' && tag.type !== 'ジャンルタグ'));
 
@@ -200,21 +228,59 @@ function selectScene(sceneId: string) {
 }
 
 function addChapter() {
+  const chapterNumber = chapters.value.length + 1;
   const chapter: Chapter = {
     id: createId(),
     projectId,
-    number: chapters.value.length + 1,
-    title: `第${chapters.value.length + 1}章`,
+    number: chapterNumber,
+    title: `第${chapterNumber}章`,
     purpose: '',
     flow: '',
     memo: '',
   };
+  const episode: Episode = {
+    id: createId(),
+    projectId,
+    chapterId: chapter.id,
+    number: 1,
+    title: '第1話',
+    purpose: '',
+    startSituation: '',
+    mainEvent: '',
+    revealInfo: '',
+    hiddenInfo: '',
+    foreshadowing: '',
+    endingHook: '',
+    characterIds: [],
+    tagIds: [],
+    memo: '',
+  };
+  const scene: Scene = {
+    id: createId(),
+    projectId,
+    episodeId: episode.id,
+    title: 'シーン1',
+    location: '',
+    time: '',
+    event: '',
+    conversationPurpose: '',
+    conflict: '',
+    result: '',
+    nextHook: '',
+    openingText: '',
+    characterIds: [],
+    tagIds: [],
+    memo: '',
+  };
   dataStore.chapters.push(chapter);
+  dataStore.episodes.push(episode);
+  dataStore.scenes.push(scene);
   selectedChapterId.value = chapter.id;
-  selectedEpisodeId.value = '';
-  selectedSceneId.value = '';
+  selectedEpisodeId.value = episode.id;
+  selectedSceneId.value = scene.id;
   selectedKind.value = 'chapter';
   collapsedChapterIds.value = collapsedChapterIds.value.filter((id) => id !== chapter.id);
+  collapsedEpisodeIds.value = collapsedEpisodeIds.value.filter((id) => id !== episode.id);
 }
 
 function addEpisode() {
@@ -237,9 +303,27 @@ function addEpisode() {
     tagIds: [],
     memo: '',
   };
+  const scene: Scene = {
+    id: createId(),
+    projectId,
+    episodeId: episode.id,
+    title: 'シーン1',
+    location: '',
+    time: '',
+    event: '',
+    conversationPurpose: '',
+    conflict: '',
+    result: '',
+    nextHook: '',
+    openingText: '',
+    characterIds: [],
+    tagIds: [],
+    memo: '',
+  };
   dataStore.episodes.push(episode);
+  dataStore.scenes.push(scene);
   selectedEpisodeId.value = episode.id;
-  selectedSceneId.value = '';
+  selectedSceneId.value = scene.id;
   selectedKind.value = 'episode';
   collapsedChapterIds.value = collapsedChapterIds.value.filter((id) => id !== selectedChapter.value?.id);
   collapsedEpisodeIds.value = collapsedEpisodeIds.value.filter((id) => id !== episode.id);
@@ -319,21 +403,35 @@ function confirmDeleteTarget() {
   deleteTarget.value = null;
 }
 
-function addMiddleEvent() {
-  const middleEvent: MiddleEvent = {
-    id: createId(),
-    order: workPlot.value.middleEvents.length + 1,
-    title: `中盤イベント${workPlot.value.middleEvents.length + 1}`,
-    content: '',
-    purpose: '',
-    change: '',
-    relatedCharacterIds: [],
-    relatedTermIds: [],
-    relatedTagIds: [],
-    memo: '',
-  };
-  workPlot.value.middleEvents.push(middleEvent);
-}
+const workPlotMiddleText = computed({
+  get() {
+    if (!workPlot.value.middleEvents.length) return '';
+    return workPlot.value.middleEvents
+      .map((event) => event.content || event.title || '')
+      .filter(Boolean)
+      .join('\n\n');
+  },
+  set(value: string) {
+    const normalized = value.trim();
+    if (!normalized) {
+      workPlot.value.middleEvents = [];
+      return;
+    }
+    const firstEvent = workPlot.value.middleEvents[0];
+    workPlot.value.middleEvents = [{
+      id: firstEvent?.id || createId(),
+      order: 1,
+      title: '中盤',
+      content: value,
+      purpose: firstEvent?.purpose || '',
+      change: firstEvent?.change || '',
+      relatedCharacterIds: firstEvent?.relatedCharacterIds || [],
+      relatedTermIds: firstEvent?.relatedTermIds || [],
+      relatedTagIds: firstEvent?.relatedTagIds || [],
+      memo: firstEvent?.memo || '',
+    }];
+  },
+});
 
 function toggleId(ids: string[] | undefined, id: string) {
   if (!ids) return [id];
@@ -397,12 +495,90 @@ function confirmRemoveSceneCharacter() {
 
 <template>
   <AppHeader :project-id="projectId" title="プロット" />
-  <main class="page split-page">
-    <section class="card side-list fixed-side-list">
-      <div class="term-side-toolbar">
-        <button type="button" @click="addChapter">＋ 章追加</button>
+  <main class="page split-page plot-page-layout" :class="{ 'sidebar-collapsed': leftSidebarCollapsed }">
+    <section class="card plot-sidebar-shell" :class="{ open: !leftSidebarCollapsed }">
+      <div v-if="leftSidebarCollapsed" class="sidebar-rail">
+        <button
+          type="button"
+          class="sidebar-rail-button"
+          @click="leftSidebarCollapsed = false"
+          title="展開"
+        >
+          ☰
+        </button>
+        <div class="sidebar-compact-tree">
+          <button
+            type="button"
+            class="sidebar-compact-item work"
+            :class="{ active: selectedKind === 'workPlot' }"
+            @click="selectWorkPlot"
+            title="作品全体プロット"
+          >
+            <span class="sidebar-compact-icon">🗂</span>
+          </button>
+          <template v-for="chapter in chapters" :key="chapter.id">
+            <button
+              type="button"
+              class="sidebar-compact-item"
+              :class="{ active: selectedKind === 'chapter' && chapter.id === selectedChapterId }"
+              @click="selectChapter(chapter.id)"
+              :title="`第${chapter.number}章`"
+            >
+              <span class="sidebar-compact-icon">📁</span>
+              <span class="sidebar-compact-badge">{{ chapter.number }}</span>
+            </button>
+            <template v-if="!isChapterCollapsed(chapter.id)">
+              <template v-for="episode in episodes.filter((item) => item.chapterId === chapter.id)" :key="episode.id">
+                <button
+                  type="button"
+                  class="sidebar-compact-item episode"
+                  :class="{ active: selectedKind === 'episode' && episode.id === selectedEpisodeId }"
+                  @click="selectEpisode(episode.id)"
+                  :title="`第${episode.number}話`"
+                >
+                  <span class="sidebar-compact-icon">📄</span>
+                  <span class="sidebar-compact-badge">{{ episode.number }}</span>
+                </button>
+                <template v-if="!isEpisodeCollapsed(episode.id)">
+                  <button
+                    v-for="(scene, sceneIndex) in dataStore.scenes.filter((item) => item.episodeId === episode.id)"
+                    :key="scene.id"
+                    type="button"
+                    class="sidebar-compact-item scene"
+                    :class="{ active: selectedKind === 'scene' && scene.id === selectedSceneId }"
+                    @click="selectScene(scene.id)"
+                    :title="`シーン${sceneIndex + 1}`"
+                  >
+                    {{ sceneIndex + 1 }}
+                  </button>
+                </template>
+              </template>
+            </template>
+          </template>
+        </div>
       </div>
-      <div class="scroll-list plot-tree" data-tree-root="plot">
+      <section v-else class="side-list fixed-side-list plot-sidebar-panel">
+        <div class="sidebar-panel-header">
+          <button
+            type="button"
+            class="sidebar-panel-close"
+            @click="leftSidebarCollapsed = true"
+            title="最小化"
+          >
+            ☰
+          </button>
+          <div class="sidebar-panel-mode-buttons">
+            <button
+              type="button"
+              class="sidebar-rail-button"
+              @click="addChapter"
+              title="章追加"
+            >
+              ＋章
+            </button>
+          </div>
+        </div>
+        <div class="scroll-list plot-tree" data-tree-root="plot">
         <section class="plot-tree-group" data-tree-level="work">
           <div
             class="plot-tree-item work-plot-item"
@@ -413,8 +589,6 @@ function confirmRemoveSceneCharacter() {
             @keydown.enter.prevent="selectWorkPlot"
             @keydown.space.prevent="selectWorkPlot"
           >
-            <span class="plot-tree-spacer"></span>
-            <span class="plot-tree-icon">🗂</span>
             <span class="plot-tree-label">作品全体プロット</span>
           </div>
         </section>
@@ -434,7 +608,6 @@ function confirmRemoveSceneCharacter() {
                   <span class="plot-tree-icon">📁</span>
                   <span class="plot-tree-number-line">第{{ chapter.number }}章</span>
                 </span>
-                <button type="button" class="secondary plot-inline-action" @click.stop="selectChapter(chapter.id); addEpisode()">＋話</button>
               </div>
               <span class="plot-tree-title-line">{{ chapter.title }}</span>
             </div>
@@ -456,7 +629,6 @@ function confirmRemoveSceneCharacter() {
                       <span class="plot-tree-icon">📄</span>
                       <span class="plot-tree-number-line">第{{ episode.number }}話</span>
                     </span>
-                    <button type="button" class="secondary plot-inline-action" @click.stop="selectEpisode(episode.id); addScene()">＋シーン</button>
                   </div>
                   <span class="plot-tree-title-line">{{ episode.title }}</span>
                 </div>
@@ -471,7 +643,6 @@ function confirmRemoveSceneCharacter() {
                   data-tree-level="scene"
                   :data-tree-id="scene.id"
                 >
-                  <span class="plot-tree-spacer"></span>
                   <span class="plot-tree-icon">📃</span>
                   <button type="button" class="plot-tree-scene-button" @click="selectScene(scene.id)">
                     <span class="plot-tree-scene-title">{{ scene.title }}</span>
@@ -481,118 +652,151 @@ function confirmRemoveSceneCharacter() {
             </section>
           </div>
         </section>
-      </div>
-    </section>
-
-    <section v-if="selectedKind === 'workPlot'" class="card editor-card line-form-card">
-      <TextField label="テーマ" v-model="workPlot.theme" />
-      <TextField label="物語の始まり" type="textarea" v-model="workPlot.beginning" />
-      <section class="inline-panel">
-        <div class="panel-heading">
-          <h3>中盤イベント</h3>
-          <button type="button" class="secondary" @click="addMiddleEvent">＋ 中盤イベント追加</button>
         </div>
-        <div v-if="workPlot.middleEvents.length" class="list">
-          <section v-for="event in workPlot.middleEvents" :key="event.id" class="inline-panel middle-event-panel">
-            <TextField label="タイトル" v-model="event.title" />
-            <TextField label="内容" type="textarea" v-model="event.content" />
-            <TextField label="目的" type="textarea" v-model="event.purpose" />
-            <TextField label="起きる変化" type="textarea" v-model="event.change" />
-            <TextField label="メモ" type="textarea" v-model="event.memo" />
-          </section>
-        </div>
-        <p v-else class="hint-text">中盤イベントを追加してください。</p>
       </section>
-      <TextField label="クライマックス" type="textarea" v-model="workPlot.climax" />
-      <TextField label="結末" type="textarea" v-model="workPlot.ending" />
-      <TextField label="主人公の最初の状態" type="textarea" v-model="workPlot.protagonistStart" />
-      <TextField label="主人公の最終状態" type="textarea" v-model="workPlot.protagonistEnd" />
-      <TextField label="メインの謎" type="textarea" v-model="workPlot.mainMystery" />
-      <TextField label="最終的に明かす真実" type="textarea" v-model="workPlot.finalTruth" />
-      <TextField label="主要な伏線" type="textarea" v-model="workPlot.foreshadowing" />
-      <TextField label="メモ" type="textarea" v-model="workPlot.memo" />
     </section>
 
-    <section v-else-if="selectedKind === 'chapter' && selectedChapter" class="card editor-card line-form-card">
-      <div class="button-row">
-        <button type="button" class="danger" @click="requestDeleteChapter(selectedChapter.id)">章削除</button>
-      </div>
-      <TextField label="章タイトル" v-model="selectedChapter.title" />
-      <label class="field"><span>第何章</span><input type="number" v-model.number="selectedChapter.number" /></label>
-      <TextField label="章の目的" type="textarea" v-model="selectedChapter.purpose" />
-      <TextField label="章の流れ" type="textarea" v-model="selectedChapter.flow" />
-      <TextField label="メモ" type="textarea" v-model="selectedChapter.memo" />
-    </section>
-
-    <section v-else-if="selectedKind === 'episode' && selectedEpisode" class="card editor-card line-form-card">
-      <div class="button-row">
-        <button type="button" class="danger" @click="requestDeleteEpisode(selectedEpisode.id)">話削除</button>
-      </div>
-      <TextField label="タイトル" v-model="selectedEpisode.title" />
-      <label class="field"><span>第何話</span><input type="number" v-model.number="selectedEpisode.number" /></label>
-      <section class="inline-panel">
-        <div class="panel-heading">
-          <h3>この話の登場人物</h3>
-          <div class="button-row">
-            <button type="button" class="secondary" @click="episodeCharacterAddModalOpen = true">＋ 人物追加</button>
-            <button type="button" class="secondary" :disabled="!episodeSelectedCharacters.length" @click="episodeCharacterRemoveModalOpen = true">人物削除</button>
+    <section v-if="selectedKind === 'workPlot'" class="card editor-card fixed-editor-card line-form-card plot-form-card">
+      <div class="editor-sticky-header">
+        <section class="name-display-row compact-name-row">
+          <div class="field-label-value">
+            <div class="name-label-line">
+              <strong class="section-label">作品全体プロット</strong>
+            </div>
           </div>
-        </div>
-        <div v-if="episodeSelectedCharacters.length" class="chip-grid">
-          <span v-for="character in episodeSelectedCharacters" :key="character.id" class="selected-chip">{{ character.name }}</span>
-        </div>
-        <p v-else class="hint-text">未設定</p>
-      </section>
-      <section class="inline-panel">
-        <div class="panel-heading">
-          <h3>関連タグ</h3>
-          <div class="button-row">
-            <button type="button" class="secondary" @click="episodeTagAddModalOpen = true">＋ タグ追加</button>
-            <button type="button" class="secondary" :disabled="!episodeSelectedTags.length" @click="episodeTagRemoveModalOpen = true">タグ削除</button>
-          </div>
-        </div>
-        <div v-if="episodeSelectedTags.length" class="chip-grid">
-          <span v-for="tag in episodeSelectedTags" :key="tag.id" class="selected-chip"><span class="tag-swatch" :style="{ backgroundColor: tag.color }"></span>{{ tag.name }}</span>
-        </div>
-        <p v-else class="hint-text">未設定</p>
-      </section>
-      <TextField label="この話の目的" type="textarea" v-model="selectedEpisode.purpose" />
-      <TextField label="開始状況" type="textarea" v-model="selectedEpisode.startSituation" />
-      <TextField label="起きる事件" type="textarea" v-model="selectedEpisode.mainEvent" />
-      <TextField label="明かす情報" type="textarea" v-model="selectedEpisode.revealInfo" />
-      <TextField label="隠す情報" type="textarea" v-model="selectedEpisode.hiddenInfo" />
-      <TextField label="伏線" type="textarea" v-model="selectedEpisode.foreshadowing" />
-      <TextField label="ラストの引き" type="textarea" v-model="selectedEpisode.endingHook" />
-      <TextField label="本文メモ" type="textarea" v-model="selectedEpisode.memo" />
+        </section>
+      </div>
+      <div class="editor-scroll-body plot-form-scroll">
+        <TextField label="テーマ" v-model="workPlot.theme" />
+        <TextField label="物語の始まり" type="textarea" v-model="workPlot.beginning" />
+        <TextField label="中盤" type="textarea" v-model="workPlotMiddleText" />
+        <TextField label="クライマックス" type="textarea" v-model="workPlot.climax" />
+        <TextField label="結末" type="textarea" v-model="workPlot.ending" />
+        <TextField label="主人公の最初の状態" type="textarea" v-model="workPlot.protagonistStart" />
+        <TextField label="主人公の最終状態" type="textarea" v-model="workPlot.protagonistEnd" />
+        <TextField label="メインの謎" type="textarea" v-model="workPlot.mainMystery" />
+        <TextField label="最終的に明かす真実" type="textarea" v-model="workPlot.finalTruth" />
+        <TextField label="主要な伏線" type="textarea" v-model="workPlot.foreshadowing" />
+        <TextField label="メモ" type="textarea" v-model="workPlot.memo" />
+      </div>
     </section>
 
-    <section v-else-if="selectedKind === 'scene' && selectedScene" class="card editor-card line-form-card">
-      <div class="button-row">
-        <button type="button" class="danger" @click="requestDeleteScene(selectedScene.id)">シーン削除</button>
-      </div>
-      <TextField label="シーンタイトル" v-model="selectedScene.title" />
-      <TextField label="場所" v-model="selectedScene.location" />
-      <TextField label="時間" v-model="selectedScene.time" />
-      <section class="inline-panel">
-        <div class="panel-heading">
-          <h3>シーンの登場人物1</h3>
-          <div class="button-row">
-            <button type="button" class="secondary" @click="sceneCharacterAddModalOpen = true">＋ 人物追加</button>
-            <button type="button" class="secondary" :disabled="!selectedScene.characterIds.length" @click="sceneCharacterRemoveModalOpen = true">人物削除</button>
+    <section v-else-if="selectedKind === 'chapter' && selectedChapter" class="card editor-card fixed-editor-card line-form-card plot-form-card">
+      <div class="editor-sticky-header">
+        <section class="name-display-row compact-name-row">
+          <div class="field-label-value">
+            <div class="name-label-line">
+              <strong class="section-label">{{ selectedChapterHeaderLabel }}</strong>
+            </div>
           </div>
-        </div>
-        <div v-if="sceneSelectedCharacters.length" class="chip-grid">
-          <span v-for="character in sceneSelectedCharacters" :key="character.id" class="selected-chip">{{ character.name }}</span>
-        </div>
-        <p v-else class="hint-text">未設定</p>
-      </section>
-      <TextField label="起きること" type="textarea" v-model="selectedScene.event" />
-      <TextField label="会話の目的" type="textarea" v-model="selectedScene.conversationPurpose" />
-      <TextField label="衝突" type="textarea" v-model="selectedScene.conflict" />
-      <TextField label="結果" type="textarea" v-model="selectedScene.result" />
-      <TextField label="次への繋ぎ" type="textarea" v-model="selectedScene.nextHook" />
-      <TextField label="書き出し" type="textarea" v-model="selectedScene.openingText" />
-      <TextField label="メモ" type="textarea" v-model="selectedScene.memo" />
+          <div class="button-row">
+            <button type="button" class="secondary" @click="addChapter()">次の章</button>
+            <button type="button" class="danger" @click="requestDeleteChapter(selectedChapter.id)">章削除</button>
+          </div>
+        </section>
+      </div>
+      <div class="editor-scroll-body plot-form-scroll">
+        <TextField label="章タイトル" v-model="selectedChapter.title" />
+        <label class="field"><span>第何章</span><input type="number" v-model.number="selectedChapter.number" /></label>
+        <TextField label="章の目的" type="textarea" v-model="selectedChapter.purpose" />
+        <TextField label="章の流れ" type="textarea" v-model="selectedChapter.flow" />
+        <TextField label="メモ" type="textarea" v-model="selectedChapter.memo" />
+      </div>
+    </section>
+
+    <section v-else-if="selectedKind === 'episode' && selectedEpisode" class="card editor-card fixed-editor-card line-form-card plot-form-card">
+      <div class="editor-sticky-header">
+        <section class="name-display-row compact-name-row">
+          <div class="field-label-value">
+            <div class="name-label-line">
+              <strong class="section-label">{{ selectedEpisodeHeaderLabel }}</strong>
+            </div>
+          </div>
+          <div class="button-row">
+            <button type="button" class="secondary" @click="addEpisode()">次の話</button>
+            <button type="button" class="danger" @click="requestDeleteEpisode(selectedEpisode.id)">話削除</button>
+          </div>
+        </section>
+      </div>
+      <div class="editor-scroll-body plot-form-scroll">
+        <TextField label="タイトル" v-model="selectedEpisode.title" />
+        <label class="field"><span>第何話</span><input type="number" v-model.number="selectedEpisode.number" /></label>
+        <section class="inline-panel">
+          <div class="panel-heading">
+            <h3>この話の登場人物</h3>
+            <div class="button-row">
+              <button type="button" class="secondary" @click="episodeCharacterAddModalOpen = true">＋ 人物追加</button>
+              <button type="button" class="secondary" :disabled="!episodeSelectedCharacters.length" @click="episodeCharacterRemoveModalOpen = true">人物削除</button>
+            </div>
+          </div>
+          <div v-if="episodeSelectedCharacters.length" class="chip-grid">
+            <span v-for="character in episodeSelectedCharacters" :key="character.id" class="selected-chip">{{ character.name }}</span>
+          </div>
+          <p v-else class="hint-text">未設定</p>
+        </section>
+        <section class="inline-panel">
+          <div class="panel-heading">
+            <h3>関連タグ</h3>
+            <div class="button-row">
+              <button type="button" class="secondary" @click="episodeTagAddModalOpen = true">＋ タグ追加</button>
+              <button type="button" class="secondary" :disabled="!episodeSelectedTags.length" @click="episodeTagRemoveModalOpen = true">タグ削除</button>
+            </div>
+          </div>
+          <div v-if="episodeSelectedTags.length" class="chip-grid">
+            <span v-for="tag in episodeSelectedTags" :key="tag.id" class="selected-chip"><span class="tag-swatch" :style="{ backgroundColor: tag.color }"></span>{{ tag.name }}</span>
+          </div>
+          <p v-else class="hint-text">未設定</p>
+        </section>
+        <TextField label="この話の目的" type="textarea" v-model="selectedEpisode.purpose" />
+        <TextField label="開始状況" type="textarea" v-model="selectedEpisode.startSituation" />
+        <TextField label="起きる事件" type="textarea" v-model="selectedEpisode.mainEvent" />
+        <TextField label="明かす情報" type="textarea" v-model="selectedEpisode.revealInfo" />
+        <TextField label="隠す情報" type="textarea" v-model="selectedEpisode.hiddenInfo" />
+        <TextField label="伏線" type="textarea" v-model="selectedEpisode.foreshadowing" />
+        <TextField label="ラストの引き" type="textarea" v-model="selectedEpisode.endingHook" />
+        <TextField label="本文メモ" type="textarea" v-model="selectedEpisode.memo" />
+      </div>
+    </section>
+
+    <section v-else-if="selectedKind === 'scene' && selectedScene" class="card editor-card fixed-editor-card line-form-card plot-form-card">
+      <div class="editor-sticky-header">
+        <section class="name-display-row compact-name-row">
+          <div class="field-label-value">
+            <div class="name-label-line">
+              <strong class="section-label">{{ selectedSceneHeaderLabel }}</strong>
+            </div>
+          </div>
+          <div class="button-row">
+            <button type="button" class="secondary" @click="addScene()">＋シーン</button>
+            <button type="button" class="danger" @click="requestDeleteScene(selectedScene.id)">シーン削除</button>
+          </div>
+        </section>
+      </div>
+      <div class="editor-scroll-body plot-form-scroll">
+        <TextField label="シーンタイトル" v-model="selectedScene.title" />
+        <TextField label="場所" v-model="selectedScene.location" />
+        <TextField label="時間" v-model="selectedScene.time" />
+        <section class="inline-panel">
+          <div class="panel-heading">
+            <h3>シーンの登場人物1</h3>
+            <div class="button-row">
+              <button type="button" class="secondary" @click="sceneCharacterAddModalOpen = true">＋ 人物追加</button>
+              <button type="button" class="secondary" :disabled="!selectedScene.characterIds.length" @click="sceneCharacterRemoveModalOpen = true">人物削除</button>
+            </div>
+          </div>
+          <div v-if="sceneSelectedCharacters.length" class="chip-grid">
+            <span v-for="character in sceneSelectedCharacters" :key="character.id" class="selected-chip">{{ character.name }}</span>
+          </div>
+          <p v-else class="hint-text">未設定</p>
+        </section>
+        <TextField label="起きること" type="textarea" v-model="selectedScene.event" />
+        <TextField label="会話の目的" type="textarea" v-model="selectedScene.conversationPurpose" />
+        <TextField label="衝突" type="textarea" v-model="selectedScene.conflict" />
+        <TextField label="結果" type="textarea" v-model="selectedScene.result" />
+        <TextField label="次への繋ぎ" type="textarea" v-model="selectedScene.nextHook" />
+        <TextField label="書き出し" type="textarea" v-model="selectedScene.openingText" />
+        <TextField label="メモ" type="textarea" v-model="selectedScene.memo" />
+      </div>
     </section>
 
     <section v-else class="card empty-state">プロット項目を選択してください。</section>

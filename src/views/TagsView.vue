@@ -8,6 +8,7 @@ import AppHeader from '../components/AppHeader.vue';
 import CharacterNameModal from '../components/CharacterNameModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
+import { getColorDisplayLabel, getColorPaletteItem } from '../constants/colorPalette';
 import TextField from '../components/TextField.vue';
 import {
   activateTagVersion,
@@ -47,6 +48,10 @@ const nameModalOpen = ref(false);
 const settingsMenuOpen = ref(false);
 const versionDeleteTargetId = ref('');
 const summaryDeleteTargetId = ref('');
+const collapsedSections = ref({
+  memo: false,
+  summary: false,
+});
 const builtinTagTypes = ['人物タグ', '関係タグ', '雰囲気タグ', 'シナリオタグ', '用語', 'ユーザータグ'] as const;
 
 const tagColorItems: ColorPaletteItem[] = [
@@ -219,7 +224,7 @@ const selectedVersions = computed(() => selected.value?.versions ?? []);
 const activeVersion = computed(() => (selected.value ? getTagActiveVersion(selected.value) : undefined));
 const activeVersionChanged = computed(() => (activeVersion.value ? isTagVersionChanged(activeVersion.value) : false));
 const selectedRelatedTags = computed(() => tags.value.filter((tag) => selected.value?.relatedTagIds?.includes(tag.id)));
-const selectedTagColorItem = computed(() => tagColorItems.find((item) => item.id === selected.value?.color));
+const selectedTagColorItem = computed(() => getColorPaletteItem(selected.value?.color));
 const selectedTagStatusItem = computed(() => tagStatusItems.find((item) => item.id === selected.value?.status));
 const selectedSummaryItems = computed(() => selected.value?.summaryItems ?? []);
 const selectedHeaderClassification = computed(() => {
@@ -242,8 +247,7 @@ const addTagItems = computed<SelectionModalItem[]>(() => {
 });
 const selectedTagColorSummary = computed(() => {
   if (!selected.value) return '';
-  if (!selectedTagColorItem.value) return selected.value.color;
-  return `${selected.value.color} / ${selectedTagColorItem.value.family} ${selectedTagColorItem.value.shade}`;
+  return getColorDisplayLabel(selected.value.color);
 });
 const modeToggleLabel = computed(() => (isTermListMode.value ? '用語' : 'タグ'));
 const modeToggleSubLabel = computed(() => (isTermListMode.value ? 'タグ' : '用語'));
@@ -599,6 +603,13 @@ function toggleListMode() {
   listMode.value = isTermListMode.value ? 'tag' : 'term';
 }
 
+function toggleSection(section: 'memo' | 'summary') {
+  collapsedSections.value = {
+    ...collapsedSections.value,
+    [section]: !collapsedSections.value[section],
+  };
+}
+
 function openTagCharacterSearch() {
   if (!selected.value) return;
   router.push({
@@ -765,7 +776,7 @@ function openTagCharacterSearch() {
                   <button v-if="isEditing" type="button" class="inline-edit-button" :disabled="isProjectTitleTag" @click="colorModalOpen = true">✎</button>
                   <span>色</span>
                 </div>
-                <div class="select-summary color-summary-lined" :style="{ borderLeftColor: selected.color }">
+                <div class="select-summary color-summary-lined" :style="{ borderLeftColor: selected.color, color: selected.color }">
                   <strong>
                     {{ selectedTagColorSummary }}
                   </strong>
@@ -786,11 +797,13 @@ function openTagCharacterSearch() {
         </section>
 
         <section class="profile-section">
-          <button type="button" class="section-toggle-header" disabled>
-            <span>▼</span>
-            <strong>メモ</strong>
-          </button>
-          <div class="profile-section-body">
+          <div class="section-toggle-header">
+            <button type="button" class="section-toggle-trigger" @click="toggleSection('memo')">
+              <span>{{ collapsedSections.memo ? '▶' : '▼' }}</span>
+              <strong>メモ</strong>
+            </button>
+          </div>
+          <div v-if="!collapsedSections.memo" class="profile-section-body">
             <TextField
               v-if="isEditing && !isProjectTitleTag"
               label="メモ"
@@ -806,16 +819,15 @@ function openTagCharacterSearch() {
         </section>
 
         <section class="profile-section">
-          <button type="button" class="section-toggle-header" disabled>
-            <span>▼</span>
-            <strong>概要</strong>
-          </button>
-          <div class="profile-section-body">
+          <div class="section-toggle-header section-toggle-header-with-action">
+            <button type="button" class="section-toggle-trigger" @click="toggleSection('summary')">
+              <span>{{ collapsedSections.summary ? '▶' : '▼' }}</span>
+              <strong>概要</strong>
+            </button>
+            <button v-if="isEditing" type="button" class="secondary section-header-action" :disabled="isProjectTitleTag" @click.stop="addSummaryItem">＋ 項目追加</button>
+          </div>
+          <div v-if="!collapsedSections.summary" class="profile-section-body">
             <section class="inline-panel">
-              <div class="panel-heading">
-                <h3>概要</h3>
-                <button v-if="isEditing" type="button" class="secondary" :disabled="isProjectTitleTag" @click="addSummaryItem">＋ 項目追加</button>
-              </div>
               <div v-if="selectedSummaryItems.length" class="tag-summary-list">
                 <section v-for="item in selectedSummaryItems" :key="item.id" class="tag-summary-item">
                   <div class="button-row tag-summary-actions" v-if="isEditing">
@@ -863,7 +875,7 @@ function openTagCharacterSearch() {
       :open="colorModalOpen"
       title="タグ色一覧"
       :items="tagColorItems"
-      :selected-id="selected?.color || ''"
+      :selected-id="selectedTagColorItem?.id || ''"
       @close="colorModalOpen = false"
       @select="updateTagColor"
     />
