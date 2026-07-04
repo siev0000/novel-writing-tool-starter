@@ -374,12 +374,30 @@ export type ProjectNavigatorSelection = {
   sceneId: string;
 };
 
+export type ProjectTagViewSelection = {
+  selectedId: string;
+  keyword: string;
+  categoryFilter: string;
+  typeFilter: string;
+  listMode: 'tag' | 'term';
+};
+
+export type ProjectCharacterViewSelection = {
+  selectedId: string;
+  keyword: string;
+  tagFilterId: string;
+};
+
 export const transientStore = reactive<{
   deletedItems: DeletedSnapshot[];
   navigatorSelections: Record<string, ProjectNavigatorSelection>;
+  tagViewSelections: Record<string, ProjectTagViewSelection>;
+  characterViewSelections: Record<string, ProjectCharacterViewSelection>;
 }>({
   deletedItems: [],
   navigatorSelections: {},
+  tagViewSelections: {},
+  characterViewSelections: {},
 });
 
 export function getProjectNavigatorSelection(projectId: string): ProjectNavigatorSelection {

@@ -20,6 +20,7 @@ import {
   getProject,
   isTagVersionChanged,
   syncTagActiveVersion,
+  transientStore,
 } from '../store/data';
 import { createId, nowIso } from '../utils/id';
 import { resizeTextarea } from '../utils/textarea';
@@ -247,6 +248,23 @@ const selectedTagColorSummary = computed(() => {
 const modeToggleLabel = computed(() => (isTermListMode.value ? '用語' : 'タグ'));
 const modeToggleSubLabel = computed(() => (isTermListMode.value ? 'タグ' : '用語'));
 
+function getSavedTagViewState() {
+  return transientStore.tagViewSelections[projectId] ?? {
+    selectedId: '',
+    keyword: '',
+    categoryFilter: 'すべて',
+    typeFilter: 'すべて',
+    listMode: 'tag',
+  };
+}
+
+const initialTagViewState = getSavedTagViewState();
+selectedId.value = initialTagViewState.selectedId;
+keyword.value = initialTagViewState.keyword;
+categoryFilter.value = initialTagViewState.categoryFilter;
+typeFilter.value = initialTagViewState.typeFilter;
+listMode.value = initialTagViewState.listMode;
+
 function getDisplayTypeLabel(type?: string) {
   if (!type) return '';
   if (type === '用語') return '用語';
@@ -285,9 +303,9 @@ watch(
 watch(
   () => route.query.type,
   (queryType) => {
-    const normalized = typeof queryType === 'string' && queryType ? queryType : 'すべて';
-    listMode.value = normalized === '用語' ? 'term' : 'tag';
-    if (typeFilter.value !== normalized) typeFilter.value = normalized;
+    if (typeof queryType !== 'string' || !queryType) return;
+    listMode.value = queryType === '用語' ? 'term' : 'tag';
+    if (typeFilter.value !== queryType) typeFilter.value = queryType;
   },
   { immediate: true }
 );
@@ -310,6 +328,20 @@ watch(typeFilter, (value) => {
       : { ...route.query, type: value },
   });
 });
+
+watch(
+  [selectedId, keyword, categoryFilter, typeFilter, listMode],
+  () => {
+    transientStore.tagViewSelections[projectId] = {
+      selectedId: selectedId.value,
+      keyword: keyword.value,
+      categoryFilter: categoryFilter.value,
+      typeFilter: typeFilter.value,
+      listMode: listMode.value,
+    };
+  },
+  { immediate: true }
+);
 
 watch(
   filteredTags,

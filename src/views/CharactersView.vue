@@ -24,6 +24,7 @@ import {
   isCharacterVersionChanged,
   compareCharacterProfileFields,
   syncCharacterActiveVersion,
+  transientStore,
 } from '../store/data';
 import { createId, nowIso } from '../utils/id';
 import type { Character, CharacterProfileField, CharacterVersion, Relationship } from '../types/models';
@@ -69,6 +70,13 @@ const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
 const profileSectionOrder = ['基本情報', '人物像', '能力', '話し方', '外見', 'その他'] as const;
+function getSavedCharacterViewState() {
+  return transientStore.characterViewSelections[projectId] ?? {
+    selectedId: '',
+    keyword: '',
+    tagFilterId: 'すべて',
+  };
+}
 const selectedId = ref('');
 const keyword = ref('');
 const tagFilterId = ref('すべて');
@@ -84,6 +92,10 @@ const settingsMenuOpen = ref(false);
 const characterDeleteTargetId = ref('');
 const characterVersionDeleteTargetId = ref('');
 const relationshipDeleteTargetId = ref('');
+const initialCharacterViewState = getSavedCharacterViewState();
+selectedId.value = initialCharacterViewState.selectedId;
+keyword.value = initialCharacterViewState.keyword;
+tagFilterId.value = initialCharacterViewState.tagFilterId;
 const characters = computed(() => dataStore.characters.filter((c) => c.projectId === projectId));
 const tags = computed(() => dataStore.tags.filter((tag) => tag.projectId === projectId && tag.status === 'active' && tag.type !== 'ジャンルタグ'));
 const relationships = computed(() => dataStore.relationships.filter((relationship) => relationship.projectId === projectId));
@@ -250,7 +262,8 @@ watch(selectedId, () => {
 watch(
   () => route.query.tagId,
   (queryTagId) => {
-    tagFilterId.value = typeof queryTagId === 'string' && queryTagId ? queryTagId : 'すべて';
+    if (typeof queryTagId !== 'string' || !queryTagId) return;
+    tagFilterId.value = queryTagId;
   },
   { immediate: true }
 );
@@ -265,6 +278,18 @@ watch(tagFilterId, (value) => {
       : { ...route.query, tagId: value },
   });
 });
+
+watch(
+  [selectedId, keyword, tagFilterId],
+  () => {
+    transientStore.characterViewSelections[projectId] = {
+      selectedId: selectedId.value,
+      keyword: keyword.value,
+      tagFilterId: tagFilterId.value,
+    };
+  },
+  { immediate: true }
+);
 
 watch(groupedProfileFields, (groups) => {
   const nextState = { ...collapsedSections.value };
