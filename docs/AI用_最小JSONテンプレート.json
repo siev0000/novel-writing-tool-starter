@@ -33,7 +33,7 @@
     {
       "id": "character_001",
       "projectId": "project_001",
-      "name": "人物名",
+      "name": "__CHARACTER_NAME__",
       "ruby": "",
       "color": "#607d8b",
       "alias": "",
@@ -78,13 +78,19 @@
     {
       "id": "tag_001",
       "projectId": "project_001",
-      "name": "タグ名",
+      "name": "__TAG_NAME__",
       "ruby": "",
       "type": "ユーザータグ",
       "category": "その他",
       "color": "#607d8b",
       "relatedTagIds": [],
-      "summaryItems": [],
+      "summaryItems": [
+        {
+          "id": "summary_001",
+          "title": "概要",
+          "content": ""
+        }
+      ],
       "description": "",
       "shortDescription": "",
       "memo": "",
@@ -101,7 +107,7 @@
       "id": "chapter_001",
       "projectId": "project_001",
       "number": 1,
-      "title": "第1章",
+      "title": "__CHAPTER_TITLE__",
       "purpose": "",
       "flow": "",
       "memo": ""
@@ -113,7 +119,7 @@
       "projectId": "project_001",
       "chapterId": "chapter_001",
       "number": 1,
-      "title": "第1話",
+      "title": "__EPISODE_TITLE__",
       "purpose": "",
       "startSituation": "",
       "mainEvent": "",
@@ -131,7 +137,7 @@
       "id": "scene_001",
       "projectId": "project_001",
       "episodeId": "episode_001",
-      "title": "シーン1",
+      "title": "__SCENE_TITLE__",
       "location": "",
       "time": "",
       "event": "",
