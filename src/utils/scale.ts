@@ -3,10 +3,30 @@ const BASE_HEIGHT = 1600;
 
 export function applyGlobalScale(targetId = 'scalable-root') {
   const baseRatio = BASE_WIDTH / BASE_HEIGHT;
+  let stableScreenWidth = window.innerWidth;
+  let stableScreenHeight = window.innerHeight;
+
+  const isTextEditingElement = (element: Element | null) => {
+    if (!(element instanceof HTMLElement)) return false;
+    if (element instanceof HTMLTextAreaElement) return true;
+    if (element instanceof HTMLInputElement) {
+      return !['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit'].includes(element.type);
+    }
+    return element.isContentEditable;
+  };
 
   const resize = () => {
-    const screenW = window.innerWidth;
-    const screenH = window.innerHeight;
+    const rawScreenW = window.innerWidth;
+    const rawScreenH = window.innerHeight;
+    const isEditing = isTextEditingElement(document.activeElement);
+
+    if (!isEditing) {
+      stableScreenWidth = rawScreenW;
+      stableScreenHeight = rawScreenH;
+    }
+
+    const screenW = isEditing ? stableScreenWidth : rawScreenW;
+    const screenH = isEditing ? stableScreenHeight : rawScreenH;
     const currentRatio = screenW / screenH;
 
     const scale = currentRatio > baseRatio
@@ -25,18 +45,26 @@ export function applyGlobalScale(targetId = 'scalable-root') {
     target.parentElement?.style.setProperty('--app-width', `${logicalWidth}px`);
     target.parentElement?.style.setProperty('--app-height', `${logicalHeight}px`);
     if (target.parentElement) {
-      target.parentElement.style.width = `${screenW}px`;
-      target.parentElement.style.height = `${screenH}px`;
+      target.parentElement.style.width = `${rawScreenW}px`;
+      target.parentElement.style.height = `${rawScreenH}px`;
     }
     target.style.transform = `scale(${scale})`;
     target.style.transformOrigin = 'top left';
   };
 
+  const handleFocusChange = () => {
+    window.setTimeout(resize, 0);
+  };
+
   window.addEventListener('resize', resize);
+  window.addEventListener('focusin', handleFocusChange);
+  window.addEventListener('focusout', handleFocusChange);
   resize();
 
   return () => {
     window.removeEventListener('resize', resize);
+    window.removeEventListener('focusin', handleFocusChange);
+    window.removeEventListener('focusout', handleFocusChange);
   };
 }
 
