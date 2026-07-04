@@ -29,6 +29,7 @@ const leftSidebarCollapsed = ref(false);
 const editorPanelCollapsed = ref(false);
 const editorTab = ref<'info' | 'memo' | 'export' | 'settings'>('info');
 const infoTab = ref<'chapter' | 'episode' | 'scene'>('episode');
+const infoPanelPosition = ref<'bottom' | 'left'>((localStorage.getItem('editor-info-panel-position') as 'bottom' | 'left') ?? 'bottom');
 const memoPopover = ref<{ memo: LineMemo; top: number } | null>(null);
 const memoPopoverPinned = ref(false);
 const visualLineCounts = ref<number[]>([]);
@@ -51,6 +52,7 @@ const editorTextStyle = computed(() => ({
 const editorLineNumberStyle = computed(() => ({
   fontSize: `${Math.max(18, editorFontSize.value - 4)}px`,
 }));
+const showSideInfoPanel = computed(() => selectedKind.value === 'scene' && infoPanelPosition.value === 'left');
 
 const chapters = computed(() => dataStore.chapters.filter((chapter) => chapter.projectId === projectId).sort((a, b) => a.number - b.number));
 const episodes = computed(() => dataStore.episodes.filter((episode) => episode.projectId === projectId).sort((a, b) => a.number - b.number));
@@ -63,6 +65,16 @@ const selectedChapter = computed(() => chapters.value.find((chapter) => chapter.
 const selectedEpisode = computed(() => episodes.value.find((episode) => episode.id === selectedEpisodeId.value));
 const selectedScene = computed(() => scenes.value.find((scene) => scene.id === selectedSceneId.value));
 const episodeScenes = computed(() => scenes.value.filter((scene) => scene.episodeId === selectedEpisodeId.value));
+const selectedChapterEpisodes = computed(() =>
+  episodes.value
+    .filter((episode) => episode.chapterId === selectedChapterId.value)
+    .sort((a, b) => a.number - b.number),
+);
+const selectedChapterScenes = computed(() =>
+  selectedChapterEpisodes.value.flatMap((episode) =>
+    scenes.value.filter((scene) => scene.episodeId === episode.id),
+  ),
+);
 
 const selectedSceneBody = computed(() => {
   if (!selectedScene.value) return undefined;
@@ -76,6 +88,12 @@ const selectedEpisodeBody = computed(() => {
 
 const displayedContent = computed(() => {
   if (selectedKind.value === 'scene') return selectedSceneBody.value?.content ?? '';
+  if (selectedKind.value === 'chapter') {
+    const chapterSceneContents = selectedChapterScenes.value
+      .map((scene) => bodyDrafts.value.find((draft) => draft.sceneId === scene.id)?.content?.trim() ?? '')
+      .filter(Boolean);
+    return chapterSceneContents.join('\n\n');
+  }
   if (!selectedEpisode.value) return '';
 
   const sceneContents = episodeScenes.value
@@ -108,7 +126,7 @@ const selectedTargetLabel = computed(() => {
   return '未選択';
 });
 const selectedModeLabel = computed(() => {
-  if (selectedKind.value === 'chapter') return '章選択';
+  if (selectedKind.value === 'chapter') return '章本文（配下結合表示）';
   return selectedKind.value === 'scene' ? 'シーン本文' : '話本文（シーン結合表示）';
 });
 const characterNameMap = computed(() => new Map(characters.value.map((character) => [character.id, character.name])));
@@ -501,6 +519,10 @@ watch(editorFontSize, (value) => {
   measureWrappedLineCounts();
 });
 
+watch(infoPanelPosition, (value) => {
+  localStorage.setItem('editor-info-panel-position', value);
+});
+
 watch(
   [selectedKind, selectedChapterId, selectedEpisodeId, selectedSceneId],
   ([kind, chapterId, episodeId, sceneId]) => {
@@ -736,24 +758,15 @@ function handleDocumentClick(event: MouseEvent) {
       </section>
     </section>
 
-    <section v-if="selectedKind === 'chapter' && selectedChapter" class="card editor-card line-form-card">
-      <div class="select-summary">
-        <strong>{{ selectedTargetLabel }}</strong>
-        <small>{{ selectedModeLabel }}</small>
-      </div>
-      <div class="hint-box">
-        章を選択中です。配下の話かシーンを選ぶと本文を表示します。
-      </div>
-    </section>
-
     <section
-      v-else-if="selectedEpisode"
+      v-if="(selectedKind === 'chapter' && selectedChapter) || selectedEpisode"
       class="editor-workspace"
       :class="{
+        'chapter-workspace': selectedKind === 'chapter',
         'scene-workspace': selectedKind === 'scene',
         'episode-workspace': selectedKind === 'episode',
         'panel-minimized': editorPanelCollapsed && selectedKind === 'scene',
-        'no-lower-panel': selectedKind === 'episode',
+        'no-lower-panel': selectedKind !== 'scene',
       }"
     >
       <div class="select-summary">
@@ -761,13 +774,9 @@ function handleDocumentClick(event: MouseEvent) {
         <small>{{ selectedModeLabel }}</small>
       </div>
 
-      <div v-if="selectedKind === 'episode'" class="hint-box">
-        話を開いているため、配下シーンの本文を結合表示しています。編集はシーンを選択したときだけ行います。
-      </div>
-
       <section class="card editor-pane-card" :class="{ 'scene-pane-card': selectedKind === 'scene' }">
         <div class="editor-pane">
-        <div class="vscode-editor" :class="{ 'merged-episode-view': selectedKind === 'episode' }">
+        <div class="vscode-editor" :class="{ 'merged-episode-view': selectedKind !== 'scene' }">
           <div ref="lineViewRef" class="line-view" :style="editorLineNumberStyle">
             <div class="line-view-inner">
               <button
@@ -788,9 +797,9 @@ function handleDocumentClick(event: MouseEvent) {
           <textarea
             ref="bodyTextareaRef"
             class="body-textarea auto-textarea"
-            :class="{ readonly: selectedKind === 'episode' }"
+            :class="{ readonly: selectedKind !== 'scene' }"
             :style="editorTextStyle"
-            :readonly="selectedKind === 'episode'"
+            :readonly="selectedKind !== 'scene'"
             :value="displayedContent"
             @scroll="syncLineViewScroll"
             @input="updateSceneContent(($event.target as HTMLTextAreaElement).value)"

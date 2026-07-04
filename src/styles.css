@@ -934,14 +934,15 @@ h1 { margin: 0; font-size: 22px; }
 .editor-workspace.scene-workspace {
   grid-template-rows: auto auto 840px 500px;
 }
+.editor-workspace.chapter-workspace,
 .editor-workspace.episode-workspace {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto 1340px;
 }
 .editor-workspace.no-lower-panel {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto 1340px;
 }
 .editor-workspace.panel-minimized {
-  grid-template-rows: auto auto minmax(600px, 1fr) 80px;
+  grid-template-rows: auto auto 1270px 70px;
 }
 .fixed-editor-card {
   grid-template-rows: auto minmax(0, 1fr);
@@ -1799,10 +1800,16 @@ h1 { margin: 0; font-size: 22px; }
   min-height: 840px;
   max-height: 840px;
 }
+.editor-workspace.chapter-workspace .editor-pane-card,
+.editor-workspace.episode-workspace .editor-pane-card {
+  height: 1340px;
+  min-height: 1340px;
+  max-height: 1340px;
+}
 .editor-workspace.panel-minimized .scene-pane-card {
-  height: 100%;
-  min-height: 0;
-  max-height: none;
+  height: 1270px;
+  min-height: 1270px;
+  max-height: 1270px;
 }
 .editor-pane {
   position: relative;
@@ -1934,7 +1941,11 @@ h1 { margin: 0; font-size: 22px; }
 .editor-lower-panel.collapsed {
   grid-template-rows: 54px 0fr;
   min-height: 0;
-  height: 80px;
+  height: 70px;
+}
+.scene-lower-panel.collapsed {
+  min-height: 70px;
+  max-height: 70px;
 }
 .editor-panel-tabs {
   display: grid;
