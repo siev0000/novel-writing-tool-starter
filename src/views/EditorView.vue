@@ -11,6 +11,7 @@ type EditorSelectionKind = 'chapter' | 'episode' | 'scene';
 
 const projectId = useRoute().params.projectId as string;
 const route = useRoute();
+const editorSidebarStateKey = `editor-left-sidebar-collapsed:${projectId}`;
 const initialInfoPanelPosition = (localStorage.getItem('editor-info-panel-position') as 'bottom' | 'left') ?? 'bottom';
 
 ensureEpisodeChapters(projectId);
@@ -26,7 +27,7 @@ const lineViewRef = ref<HTMLDivElement | null>(null);
 const newMemoLine = ref(1);
 const newMemoType = ref<MemoType>('revision');
 const newMemoContent = ref('');
-const leftSidebarCollapsed = ref(false);
+const leftSidebarCollapsed = ref(localStorage.getItem(editorSidebarStateKey) === 'true');
 const editorPanelCollapsed = ref(false);
 const editorTab = ref<'info' | 'memo' | 'export' | 'settings'>(initialInfoPanelPosition === 'left' ? 'memo' : 'info');
 const infoTab = ref<'chapter' | 'episode' | 'scene'>('episode');
@@ -452,7 +453,9 @@ function exportText(withMemos = false) {
     : displayedContent.value;
   const filename = selectedKind.value === 'scene'
     ? `${selectedScene.value?.title || 'シーン本文'}.txt`
-    : `${selectedEpisode.value?.title || '話本文'}.txt`;
+    : selectedKind.value === 'chapter'
+      ? `${selectedChapter.value?.title || '章本文'}.txt`
+      : `${selectedEpisode.value?.title || '話本文'}.txt`;
   downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), filename);
 }
 
@@ -525,6 +528,10 @@ watch(infoPanelPosition, (value) => {
   if (value === 'left' && editorTab.value === 'info') {
     editorTab.value = 'memo';
   }
+});
+
+watch(leftSidebarCollapsed, (value) => {
+  localStorage.setItem(editorSidebarStateKey, String(value));
 });
 
 watch(
@@ -922,6 +929,12 @@ function handleDocumentClick(event: MouseEvent) {
         </div>
       </section>
       </template>
+
+      <section v-if="selectedKind !== 'scene'" class="card editor-export-row">
+        <div class="button-row">
+          <button class="secondary" @click="exportText(false)">txt出力</button>
+        </div>
+      </section>
 
       <section v-if="selectedKind === 'scene'" class="card editor-lower-panel scene-lower-panel" :class="{ collapsed: editorPanelCollapsed }">
         <div class="editor-panel-tabs" :class="{ 'side-info-mode': showSideInfoPanel }">

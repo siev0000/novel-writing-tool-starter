@@ -141,7 +141,8 @@ async function importProjectJson(event: Event) {
           <button type="button" class="secondary" @click="openImportFileDialog">上書き読み込み</button>
         </div>
         </div>
-        <p class="hint-text">この作品の内容をJSONで保存し、JSONを読み込むと現在の作品内容を上書きします。</p>
+        <p class="hint-text">JSONは保存・復元用です。JSONを読み込むと現在の作品内容を上書きします。</p>
+        <p class="hint-text">MDは閲覧用です。AIに読み取らせたいときや、文章として整理して確認したいときに使います。</p>
         <p v-if="importError" class="hint-text error-text">{{ importError }}</p>
         <input ref="importFileInput" type="file" accept="application/json,.json" class="hidden-file-input" @change="importProjectJson" />
       </section>

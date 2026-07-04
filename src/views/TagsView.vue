@@ -45,6 +45,8 @@ const categorySelectModalOpen = ref(false);
 const relatedTagsModalOpen = ref(false);
 const isEditing = ref(false);
 const nameModalOpen = ref(false);
+const nameError = ref('');
+const pendingCreateType = ref<'tag' | 'term' | null>(null);
 const settingsMenuOpen = ref(false);
 const versionDeleteTargetId = ref('');
 const summaryDeleteTargetId = ref('');
@@ -362,13 +364,24 @@ watch(
 );
 
 function addTag() {
+  pendingCreateType.value = isTermListMode.value ? 'term' : 'tag';
+  nameError.value = '';
+  nameModalOpen.value = true;
+}
+
+function createTagWithName(name: string, ruby: string) {
   const now = nowIso();
-  const isTerm = typeFilter.value === '用語';
+  const isTerm = pendingCreateType.value === 'term';
+  const normalized = normalizeTagName(name) || '名前未設定';
+  if (hasDuplicateTagName(normalized)) {
+    nameError.value = '同じ名前のタグは設定できません。';
+    return;
+  }
   const tag: Tag = {
     id: createId(),
     projectId,
-    name: isTerm ? '新しい用語' : '新しいタグ',
-    ruby: '',
+    name: normalized,
+    ruby: ruby.trim(),
     type: isTerm ? '用語' : 'ユーザータグ',
     category: isTerm ? 'その他' : undefined,
     color: isTerm ? '#607d8b' : '#32746d',
@@ -386,6 +399,17 @@ function addTag() {
   ensureTagVersions(tag);
   selectedId.value = tag.id;
   isEditing.value = true;
+  nameError.value = '';
+  pendingCreateType.value = null;
+  nameModalOpen.value = false;
+}
+
+function normalizeTagName(value: string) {
+  return value.trim();
+}
+
+function hasDuplicateTagName(name: string, excludeId?: string) {
+  return tags.value.some((tag) => tag.id !== excludeId && normalizeTagName(tag.name) === name);
 }
 
 function requestDeleteTag() {
@@ -472,9 +496,19 @@ function updateTagRuby(value: string) {
 }
 
 function updateTagDisplayName(name: string, ruby: string) {
+  if (pendingCreateType.value) {
+    createTagWithName(name, ruby);
+    return;
+  }
   if (!selected.value || isProjectTitleTag.value) return;
-  updateTagName(name.trim() || '名前未設定');
+  const normalized = normalizeTagName(name) || '名前未設定';
+  if (hasDuplicateTagName(normalized, selected.value.id)) {
+    nameError.value = '同じ名前のタグは設定できません。';
+    return;
+  }
+  updateTagName(normalized);
   updateTagRuby(ruby.trim());
+  nameError.value = '';
   nameModalOpen.value = false;
 }
 
@@ -937,10 +971,11 @@ function openTagCharacterSearch() {
 
     <CharacterNameModal
       :open="nameModalOpen"
-      :title="isTermTag ? '用語名設定' : 'タグ名設定'"
-      :name="selected?.name || ''"
-      :ruby="selected?.ruby || ''"
-      @close="nameModalOpen = false"
+      :title="pendingCreateType === 'term' ? '用語名設定' : pendingCreateType === 'tag' ? 'タグ名設定' : isTermTag ? '用語名設定' : 'タグ名設定'"
+      :name="pendingCreateType ? '' : selected?.name || ''"
+      :ruby="pendingCreateType ? '' : selected?.ruby || ''"
+      :error-message="nameError"
+      @close="nameModalOpen = false; nameError = ''; pendingCreateType = null"
       @save="updateTagDisplayName"
     />
 

@@ -13,6 +13,7 @@ import type { Chapter, Episode, Scene } from '../types/models';
 type PlotSelectionKind = 'workPlot' | 'chapter' | 'episode' | 'scene';
 
 const projectId = useRoute().params.projectId as string;
+const plotSidebarStateKey = `plot-left-sidebar-collapsed:${projectId}`;
 ensureEpisodeChapters(projectId);
 const initialWorkPlot = ensureWorkPlot(projectId);
 
@@ -22,18 +23,14 @@ const selectedEpisodeId = ref('');
 const selectedSceneId = ref('');
 const collapsedChapterIds = ref<string[]>([]);
 const collapsedEpisodeIds = ref<string[]>([]);
-const leftSidebarCollapsed = ref(false);
+const leftSidebarCollapsed = ref(localStorage.getItem(plotSidebarStateKey) === 'true');
 
-const episodeCharacterAddModalOpen = ref(false);
-const episodeCharacterRemoveModalOpen = ref(false);
+const episodeCharacterModalOpen = ref(false);
 const episodeTagAddModalOpen = ref(false);
 const episodeTagRemoveModalOpen = ref(false);
-const sceneCharacterAddModalOpen = ref(false);
-const sceneCharacterRemoveModalOpen = ref(false);
+const sceneCharacterModalOpen = ref(false);
 const deleteTarget = ref<{ kind: 'chapter' | 'episode' | 'scene'; id: string; label: string } | null>(null);
-const episodeCharacterDeleteTarget = ref<SelectionModalItem | null>(null);
 const episodeTagDeleteTarget = ref<SelectionModalItem | null>(null);
-const sceneCharacterDeleteTarget = ref<SelectionModalItem | null>(null);
 getProjectNavigatorSelection(projectId);
 
 const workPlot = computed(() => getWorkPlot(projectId) ?? initialWorkPlot);
@@ -78,17 +75,8 @@ const episodeSelectedCharacters = computed(() => characters.value.filter((charac
 const episodeSelectedTags = computed(() => tags.value.filter((tag) => selectedEpisode.value?.tagIds?.includes(tag.id)));
 const sceneSelectedCharacters = computed(() => characters.value.filter((character) => selectedScene.value?.characterIds?.includes(character.id)));
 
-const episodeCharacterAddItems = computed<SelectionModalItem[]>(() => {
+const episodeCharacterItems = computed<SelectionModalItem[]>(() => {
   return characters.value.map((character) => ({
-    id: character.id,
-    label: character.name || '名前未設定',
-    meta: character.ruby,
-    disabled: selectedEpisode.value?.characterIds?.includes(character.id) ?? false,
-  }));
-});
-
-const episodeCharacterRemoveItems = computed<SelectionModalItem[]>(() => {
-  return episodeSelectedCharacters.value.map((character) => ({
     id: character.id,
     label: character.name || '名前未設定',
     meta: character.ruby,
@@ -114,17 +102,8 @@ const episodeTagRemoveItems = computed<SelectionModalItem[]>(() => {
   }));
 });
 
-const sceneCharacterAddItems = computed<SelectionModalItem[]>(() => {
+const sceneCharacterItems = computed<SelectionModalItem[]>(() => {
   return characters.value.map((character) => ({
-    id: character.id,
-    label: character.name || '名前未設定',
-    meta: character.ruby,
-    disabled: selectedScene.value?.characterIds?.includes(character.id) ?? false,
-  }));
-});
-
-const sceneCharacterRemoveItems = computed<SelectionModalItem[]>(() => {
-  return sceneSelectedCharacters.value.map((character) => ({
     id: character.id,
     label: character.name || '名前未設定',
     meta: character.ruby,
@@ -147,6 +126,10 @@ watch(
     setProjectNavigatorSelection(projectId, { kind, chapterId, episodeId, sceneId });
   }
 );
+
+watch(leftSidebarCollapsed, (value) => {
+  localStorage.setItem(plotSidebarStateKey, String(value));
+});
 
 watch(
   () => transientStore.navigatorSelections[projectId],
@@ -438,22 +421,9 @@ function toggleId(ids: string[] | undefined, id: string) {
   return ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
 }
 
-function addEpisodeCharacter(item: SelectionModalItem) {
+function toggleEpisodeCharacter(item: SelectionModalItem) {
   if (!selectedEpisode.value) return;
   selectedEpisode.value.characterIds = toggleId(selectedEpisode.value.characterIds, item.id);
-  episodeCharacterAddModalOpen.value = false;
-}
-
-function removeEpisodeCharacter(item: SelectionModalItem) {
-  episodeCharacterDeleteTarget.value = item;
-}
-
-function confirmRemoveEpisodeCharacter() {
-  if (!selectedEpisode.value || !episodeCharacterDeleteTarget.value) return;
-  if (!selectedEpisode.value) return;
-  selectedEpisode.value.characterIds = selectedEpisode.value.characterIds.filter((id) => id !== episodeCharacterDeleteTarget.value?.id);
-  episodeCharacterRemoveModalOpen.value = false;
-  episodeCharacterDeleteTarget.value = null;
 }
 
 function addEpisodeTag(item: SelectionModalItem) {
@@ -474,22 +444,17 @@ function confirmRemoveEpisodeTag() {
   episodeTagDeleteTarget.value = null;
 }
 
-function addSceneCharacter(item: SelectionModalItem) {
+function toggleSceneCharacter(item: SelectionModalItem) {
   if (!selectedScene.value) return;
-  selectedScene.value.characterIds = toggleId(selectedScene.value.characterIds, item.id);
-  sceneCharacterAddModalOpen.value = false;
-}
-
-function removeSceneCharacter(item: SelectionModalItem) {
-  sceneCharacterDeleteTarget.value = item;
-}
-
-function confirmRemoveSceneCharacter() {
-  if (!selectedScene.value || !sceneCharacterDeleteTarget.value) return;
-  if (!selectedScene.value) return;
-  selectedScene.value.characterIds = selectedScene.value.characterIds.filter((id) => id !== sceneCharacterDeleteTarget.value?.id);
-  sceneCharacterRemoveModalOpen.value = false;
-  sceneCharacterDeleteTarget.value = null;
+  const currentIds = selectedScene.value.characterIds ?? [];
+  const alreadySelected = currentIds.includes(item.id);
+  selectedScene.value.characterIds = toggleId(currentIds, item.id);
+  if (!alreadySelected && selectedEpisode.value) {
+    const episodeIds = selectedEpisode.value.characterIds ?? [];
+    if (!episodeIds.includes(item.id)) {
+      selectedEpisode.value.characterIds = [...episodeIds, item.id];
+    }
+  }
 }
 </script>
 
@@ -724,10 +689,7 @@ function confirmRemoveSceneCharacter() {
         <section class="inline-panel">
           <div class="panel-heading">
             <h3>この話の登場人物</h3>
-            <div class="button-row">
-              <button type="button" class="secondary" @click="episodeCharacterAddModalOpen = true">＋ 人物追加</button>
-              <button type="button" class="secondary" :disabled="!episodeSelectedCharacters.length" @click="episodeCharacterRemoveModalOpen = true">人物削除</button>
-            </div>
+            <button type="button" class="inline-edit-button" @click="episodeCharacterModalOpen = true">✎</button>
           </div>
           <div v-if="episodeSelectedCharacters.length" class="chip-grid">
             <span v-for="character in episodeSelectedCharacters" :key="character.id" class="selected-chip">{{ character.name }}</span>
@@ -778,11 +740,8 @@ function confirmRemoveSceneCharacter() {
         <TextField label="時間" v-model="selectedScene.time" />
         <section class="inline-panel">
           <div class="panel-heading">
-            <h3>シーンの登場人物1</h3>
-            <div class="button-row">
-              <button type="button" class="secondary" @click="sceneCharacterAddModalOpen = true">＋ 人物追加</button>
-              <button type="button" class="secondary" :disabled="!selectedScene.characterIds.length" @click="sceneCharacterRemoveModalOpen = true">人物削除</button>
-            </div>
+            <h3>シーンの登場人物</h3>
+            <button type="button" class="inline-edit-button" @click="sceneCharacterModalOpen = true">✎</button>
           </div>
           <div v-if="sceneSelectedCharacters.length" class="chip-grid">
             <span v-for="character in sceneSelectedCharacters" :key="character.id" class="selected-chip">{{ character.name }}</span>
@@ -802,22 +761,14 @@ function confirmRemoveSceneCharacter() {
     <section v-else class="card empty-state">プロット項目を選択してください。</section>
 
     <SelectionModal
-      :open="episodeCharacterAddModalOpen"
+      :open="episodeCharacterModalOpen"
       title="話プロットの登場人物"
-      :items="episodeCharacterAddItems"
-      :selected-id="''"
-      empty-text="追加できる人物がありません。"
-      @close="episodeCharacterAddModalOpen = false"
-      @select="addEpisodeCharacter"
-    />
-    <SelectionModal
-      :open="episodeCharacterRemoveModalOpen"
-      title="削除する登場人物"
-      :items="episodeCharacterRemoveItems"
-      :selected-id="''"
-      empty-text="削除できる人物がありません。"
-      @close="episodeCharacterRemoveModalOpen = false"
-      @select="removeEpisodeCharacter"
+      :items="episodeCharacterItems"
+      mode="check"
+      :selected-ids="selectedEpisode?.characterIds ?? []"
+      empty-text="人物がありません。"
+      @close="episodeCharacterModalOpen = false"
+      @toggle="toggleEpisodeCharacter"
     />
     <SelectionModal
       :open="episodeTagAddModalOpen"
@@ -840,22 +791,14 @@ function confirmRemoveSceneCharacter() {
       @select="removeEpisodeTag"
     />
     <SelectionModal
-      :open="sceneCharacterAddModalOpen"
+      :open="sceneCharacterModalOpen"
       title="シーンの登場人物"
-      :items="sceneCharacterAddItems"
-      :selected-id="''"
-      empty-text="追加できる人物がありません。"
-      @close="sceneCharacterAddModalOpen = false"
-      @select="addSceneCharacter"
-    />
-    <SelectionModal
-      :open="sceneCharacterRemoveModalOpen"
-      title="削除するシーン登場人物"
-      :items="sceneCharacterRemoveItems"
-      :selected-id="''"
-      empty-text="削除できる人物がありません。"
-      @close="sceneCharacterRemoveModalOpen = false"
-      @select="removeSceneCharacter"
+      :items="sceneCharacterItems"
+      mode="check"
+      :selected-ids="selectedScene?.characterIds ?? []"
+      empty-text="人物がありません。"
+      @close="sceneCharacterModalOpen = false"
+      @toggle="toggleSceneCharacter"
     />
     <ConfirmModal
       :open="Boolean(deleteTarget)"
@@ -866,28 +809,12 @@ function confirmRemoveSceneCharacter() {
       @confirm="confirmDeleteTarget"
     />
     <ConfirmModal
-      :open="Boolean(episodeCharacterDeleteTarget)"
-      title="登場人物を削除"
-      :message="`「${episodeCharacterDeleteTarget?.label || ''}」をこの話の登場人物から外します。`"
-      confirm-label="人物を削除"
-      @close="episodeCharacterDeleteTarget = null"
-      @confirm="confirmRemoveEpisodeCharacter"
-    />
-    <ConfirmModal
       :open="Boolean(episodeTagDeleteTarget)"
       title="関連タグを削除"
       :message="`「${episodeTagDeleteTarget?.label || ''}」をこの話の関連タグから外します。`"
       confirm-label="タグを削除"
       @close="episodeTagDeleteTarget = null"
       @confirm="confirmRemoveEpisodeTag"
-    />
-    <ConfirmModal
-      :open="Boolean(sceneCharacterDeleteTarget)"
-      title="登場人物を削除"
-      :message="`「${sceneCharacterDeleteTarget?.label || ''}」をこのシーンの登場人物から外します。`"
-      confirm-label="人物を削除"
-      @close="sceneCharacterDeleteTarget = null"
-      @confirm="confirmRemoveSceneCharacter"
     />
   </main>
 </template>

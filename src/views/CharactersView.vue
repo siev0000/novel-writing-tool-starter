@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import ColorPaletteModal from '../components/ColorPaletteModal.vue';
 import type { ColorPaletteItem } from '../components/ColorPaletteModal.vue';
@@ -84,6 +84,8 @@ const colorModalOpen = ref(false);
 const tagModalOpen = ref(false);
 const tagFilterModalOpen = ref(false);
 const nameModalOpen = ref(false);
+const nameError = ref('');
+const pendingCreateCharacter = ref(false);
 const relationshipModalOpen = ref(false);
 const relationshipDeleteModalOpen = ref(false);
 const deleteTargetModalOpen = ref(false);
@@ -313,9 +315,30 @@ watch(
 );
 
 function addCharacter() {
+  pendingCreateCharacter.value = true;
+  nameError.value = '';
+  nameModalOpen.value = true;
+}
+
+function normalizeCharacterName(value: string) {
+  return value.trim();
+}
+
+function hasDuplicateCharacterName(name: string, excludeId?: string) {
+  return characters.value.some((character) =>
+    character.id !== excludeId && normalizeCharacterName(character.name) === name
+  );
+}
+
+function createCharacterWithName(name: string, ruby: string) {
   const now = nowIso();
+  const normalized = normalizeCharacterName(name) || '名前未設定';
+  if (hasDuplicateCharacterName(normalized)) {
+    nameError.value = '同じ名前の人物は設定できません。';
+    return;
+  }
   const c: Character = {
-    id: createId(), projectId, name: '新しい人物', ruby: '', alias: '', age: '', gender: '', birthday: '',
+    id: createId(), projectId, name: normalized, ruby: ruby.trim(), alias: '', age: '', gender: '', birthday: '',
     color: DEFAULT_CHARACTER_COLOR,
     race: '', affiliation: '', origin: '', height: '', weight: '', role: '', personality: '', goal: '',
     behaviorPrinciple: '', likes: '', dislikes: '', weakness: '', secret: '', battleStyle: '', weapon: '',
@@ -326,9 +349,9 @@ function addCharacter() {
   dataStore.characters.unshift(c);
   ensureCharacterVersions(c);
   selectedId.value = c.id;
-  nextTick(() => {
-    nameModalOpen.value = true;
-  });
+  pendingCreateCharacter.value = false;
+  nameError.value = '';
+  nameModalOpen.value = false;
 }
 
 function addVersion() {
@@ -398,11 +421,21 @@ function toggleTag(item: SelectionModalItem) {
 }
 
 function updateName(name: string, ruby: string) {
+  if (pendingCreateCharacter.value) {
+    createCharacterWithName(name, ruby);
+    return;
+  }
   if (!selected.value) return;
-  selected.value.name = name.trim() || '名前未設定';
+  const normalized = normalizeCharacterName(name) || '名前未設定';
+  if (hasDuplicateCharacterName(normalized, selected.value.id)) {
+    nameError.value = '同じ名前の人物は設定できません。';
+    return;
+  }
+  selected.value.name = normalized;
   selected.value.ruby = ruby.trim();
   selected.value.updatedAt = nowIso();
   syncCharacterActiveVersion(selected.value);
+  nameError.value = '';
   nameModalOpen.value = false;
 }
 
@@ -709,9 +742,10 @@ function toggleProfileSection(section: string) {
       />
       <CharacterNameModal
         :open="nameModalOpen"
-        :name="selected.name"
-        :ruby="selected.ruby"
-        @close="nameModalOpen = false"
+        :name="pendingCreateCharacter ? '' : selected.name"
+        :ruby="pendingCreateCharacter ? '' : selected.ruby"
+        :error-message="nameError"
+        @close="nameModalOpen = false; nameError = ''; pendingCreateCharacter = false"
         @save="updateName"
       />
       <CharacterRelationshipModal
