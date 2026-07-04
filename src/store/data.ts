@@ -26,6 +26,7 @@ import type {
   TermVersionData,
   WorkPlot,
 } from '../types/models';
+import { DEFAULT_CHARACTER_COLOR } from '../constants/colorPalette';
 import { createId, nowIso } from '../utils/id';
 
 const STORAGE_KEY = 'novel-writing-tool-data-v1';
@@ -544,6 +545,7 @@ export function createCharacterSnapshot(character: Character | CharacterVersionD
   return {
     name: character.name,
     ruby: character.ruby,
+    color: character.color ?? DEFAULT_CHARACTER_COLOR,
     alias: character.alias,
     age: character.age,
     gender: character.gender,
@@ -945,6 +947,7 @@ export function isTagVersionChanged(version: TagVersion) {
 export function applyCharacterSnapshot(character: Character, snapshot: CharacterVersionData) {
   character.name = snapshot.name;
   character.ruby = snapshot.ruby;
+  character.color = snapshot.color ?? DEFAULT_CHARACTER_COLOR;
   character.alias = snapshot.alias;
   character.age = snapshot.age;
   character.gender = snapshot.gender;
@@ -1003,6 +1006,7 @@ export function syncCharacterActiveVersion(character: Character) {
   const snapshot = createCharacterSnapshot(character);
   activeVersion.name = snapshot.name;
   activeVersion.ruby = snapshot.ruby;
+  activeVersion.color = snapshot.color;
   activeVersion.alias = snapshot.alias;
   activeVersion.age = snapshot.age;
   activeVersion.gender = snapshot.gender;
@@ -1041,6 +1045,7 @@ export function syncCharacterActiveVersion(character: Character) {
 }
 
 export function ensureCharacterVersions(character: Character) {
+  character.color ??= DEFAULT_CHARACTER_COLOR;
   character.versions ??= [];
 
   if (!character.versions.length) {
@@ -1057,6 +1062,7 @@ export function ensureCharacterVersions(character: Character) {
   }
 
   character.versions.forEach((version) => {
+    version.color ??= DEFAULT_CHARACTER_COLOR;
     version.tagIds ??= [];
     version.customFields ??= [];
     version.tagIds = [...version.tagIds];

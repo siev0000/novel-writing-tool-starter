@@ -37,7 +37,6 @@ function save() {
       <section class="modal-panel name-modal" role="dialog" aria-modal="true" aria-label="名前設定" @click.stop>
         <header class="modal-header">
           <h2>{{ title || '名前設定' }}</h2>
-          <button class="ghost" type="button" @click="emit('close')">閉じる</button>
         </header>
 
         <label class="field">
@@ -50,7 +49,7 @@ function save() {
         </label>
         <p v-if="errorMessage" class="hint-text error-text">{{ errorMessage }}</p>
 
-        <div class="button-row">
+        <div class="button-row modal-footer">
           <button type="button" @click="save">保存</button>
           <button type="button" class="secondary" @click="emit('close')">キャンセル</button>
         </div>

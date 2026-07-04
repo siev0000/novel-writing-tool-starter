@@ -65,6 +65,16 @@ const groupedItems = computed(() => {
   return Array.from(groups, ([category, items]) => ({ category, items }));
 });
 
+const selectedItems = computed(() => {
+  if (props.mode !== 'check') return [];
+  const itemMap = new Map(props.items.map((item) => [item.id, item]));
+  return props.selectedIds
+    .map((id) => itemMap.get(id))
+    .filter((item): item is SelectionModalItem => Boolean(item));
+});
+
+const selectedSummaryText = computed(() => selectedItems.value.map((item) => `#${item.label}`).join(','));
+
 function selectItem(item: SelectionModalItem) {
   if (item.disabled) return;
   if (props.mode === 'check') {
@@ -84,13 +94,25 @@ function isSelected(item: SelectionModalItem) {
 <template>
   <Teleport to="body">
     <div v-if="open" class="modal-backdrop">
-      <section class="modal-panel selection-modal" role="dialog" aria-modal="true" :aria-label="title" @click.stop>
-        <header class="modal-header">
+      <section
+        class="modal-panel selection-modal"
+        :class="{ 'has-selection-summary': mode === 'check' && selectedItems.length }"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
+        @click.stop
+      >
+        <header v-if="!(mode === 'check' && selectedItems.length)" class="modal-header modal-header-stacked">
           <h2>{{ title }}</h2>
-          <button class="ghost" type="button" @click="emit('close')">閉じる</button>
+          <input v-model="keyword" class="modal-search" placeholder="一覧から検索" />
         </header>
 
-        <input v-model="keyword" class="modal-search" placeholder="一覧から検索" />
+        <div v-else class="selection-modal-top">
+          <div class="selection-summary">
+            {{ selectedSummaryText }}
+          </div>
+          <input v-model="keyword" class="modal-search" placeholder="一覧から検索" />
+        </div>
 
         <div v-if="groupedItems.length" class="modal-list" :class="`modal-list-${layout}`">
           <section v-for="group in groupedItems" :key="group.category" class="modal-group">
@@ -102,12 +124,12 @@ function isSelected(item: SelectionModalItem) {
                 type="button"
                 class="modal-item"
                 :class="{ active: isSelected(item), checkable: mode === 'check' }"
+                :style="item.color ? { borderLeftColor: item.color } : undefined"
                 :disabled="item.disabled"
                 :title="item.description || item.meta || item.label"
                 @click="selectItem(item)"
               >
                 <span v-if="mode === 'check'" class="check-mark" :class="{ checked: isSelected(item) }"></span>
-                <span v-if="item.color" class="tag-swatch" :style="{ backgroundColor: item.color }"></span>
                 <span class="modal-item-body">
                   <b>{{ item.label }}</b>
                   <small v-if="item.meta">{{ item.meta }}</small>
@@ -120,7 +142,7 @@ function isSelected(item: SelectionModalItem) {
 
         <p v-else class="empty-state">{{ emptyText }}</p>
 
-        <div class="button-row">
+        <div class="button-row modal-footer">
           <button type="button" class="secondary" @click="emit('close')">閉じる</button>
         </div>
       </section>

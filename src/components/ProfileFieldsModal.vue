@@ -136,7 +136,6 @@ function toggleSection(section: string) {
           <h2>プロフィール項目設定</h2>
           <div class="header-actions-inline">
             <button type="button" @click="addModalOpen = true">項目追加</button>
-            <button class="ghost" type="button" @click="emit('close')">閉じる</button>
           </div>
         </header>
 
@@ -176,7 +175,7 @@ function toggleSection(section: string) {
           </section>
         </div>
 
-        <div class="button-row profile-modal-footer">
+        <div class="button-row modal-footer profile-modal-footer">
           <button type="button" @click="emit('close')">決定</button>
         </div>
       </section>

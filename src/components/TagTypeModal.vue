@@ -70,7 +70,6 @@ function submitAdd() {
           <h2>{{ title || 'タグ分類' }}</h2>
           <div class="header-actions-inline">
             <button type="button" class="secondary" @click="editing = !editing">{{ editing ? '完了' : '✎' }}</button>
-            <button class="ghost" type="button" @click="emit('close')">閉じる</button>
           </div>
         </header>
 
@@ -112,7 +111,7 @@ function submitAdd() {
 
         <p v-else class="empty-state">選択できる分類がありません。</p>
 
-        <div class="button-row">
+        <div class="button-row modal-footer">
           <button type="button" class="secondary" @click="emit('close')">閉じる</button>
         </div>
       </section>

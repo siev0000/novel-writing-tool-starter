@@ -42,7 +42,6 @@ function paletteItem(family: string, shade: string) {
       <section class="modal-panel palette-modal" role="dialog" aria-modal="true" :aria-label="title" @click.stop>
         <header class="modal-header">
           <h2>{{ title }}</h2>
-          <button class="ghost" type="button" @click="emit('close')">閉じる</button>
         </header>
 
         <div class="palette-table-wrap">
@@ -69,7 +68,7 @@ function paletteItem(family: string, shade: string) {
           </div>
         </div>
 
-        <div class="button-row">
+        <div class="button-row modal-footer">
           <button type="button" class="secondary" @click="emit('close')">閉じる</button>
         </div>
       </section>

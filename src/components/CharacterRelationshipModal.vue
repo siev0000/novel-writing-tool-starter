@@ -92,7 +92,6 @@ function save() {
       <section class="modal-panel relationship-create-modal" role="dialog" aria-modal="true" aria-label="相関設定" @click.stop>
         <header class="modal-header">
           <h2>相関設定</h2>
-          <button class="ghost" type="button" @click="emit('close')">閉じる</button>
         </header>
 
         <label class="field">
@@ -117,7 +116,7 @@ function save() {
           <textarea ref="impressionToTextarea" v-model="impressionToCurrent" class="auto-textarea" rows="4" placeholder="相手からこちらへの印象や感情" />
         </label>
 
-        <div class="button-row">
+        <div class="button-row modal-footer">
           <button type="button" :disabled="!canSave" @click="save">保存</button>
           <button type="button" class="secondary" @click="emit('close')">キャンセル</button>
         </div>

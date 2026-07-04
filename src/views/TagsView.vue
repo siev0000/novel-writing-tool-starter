@@ -8,8 +8,6 @@ import AppHeader from '../components/AppHeader.vue';
 import CharacterNameModal from '../components/CharacterNameModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
-import TagTypeModal from '../components/TagTypeModal.vue';
-import type { TagTypeModalItem } from '../components/TagTypeModal.vue';
 import TextField from '../components/TextField.vue';
 import {
   activateTagVersion,
@@ -31,6 +29,7 @@ const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
 const selectedId = ref('');
+const selectionHistory = ref<string[]>([]);
 const keyword = ref('');
 const categoryFilter = ref('すべて');
 const typeFilter = ref('すべて');
@@ -38,14 +37,14 @@ const listMode = ref<'tag' | 'term'>('tag');
 const tagDeleteTargetId = ref('');
 const colorModalOpen = ref(false);
 const statusModalOpen = ref(false);
-const typeModalOpen = ref(false);
-const tagModalOpen = ref(false);
-const tagRemoveModalOpen = ref(false);
+const typeFilterModalOpen = ref(false);
+const categoryFilterModalOpen = ref(false);
+const categorySelectModalOpen = ref(false);
+const relatedTagsModalOpen = ref(false);
 const isEditing = ref(false);
 const nameModalOpen = ref(false);
-const tagTypeDeleteTarget = ref<TagTypeModalItem | null>(null);
+const settingsMenuOpen = ref(false);
 const versionDeleteTargetId = ref('');
-const relatedTagDeleteTarget = ref<SelectionModalItem | null>(null);
 const summaryDeleteTargetId = ref('');
 const builtinTagTypes = ['人物タグ', '関係タグ', '雰囲気タグ', 'シナリオタグ', '用語', 'ユーザータグ'] as const;
 
@@ -160,15 +159,35 @@ const isTermListMode = computed(() => listMode.value === 'term');
 const project = computed(() => getProject(projectId));
 
 const tags = computed(() => dataStore.tags.filter((tag) => tag.projectId === projectId && tag.type !== 'ジャンルタグ'));
-const tagTypeItems = computed<TagTypeModalItem[]>(() => {
+const termFilterCategories = computed(() => {
+  const usedCategories = Array.from(new Set(
+    tags.value
+      .filter((tag) => tag.source !== 'default')
+      .map((tag) => tag.category || 'その他')
+  ));
+  const ordered = termCategories.filter((category) => usedCategories.includes(category));
+  const extra = usedCategories.filter((category) => !termCategories.includes(category));
+  return [...ordered, ...extra];
+});
+const termCategoryFilterItems = computed<SelectionModalItem[]>(() => [
+  { id: 'すべて', label: 'すべて', category: '分類' },
+  ...termFilterCategories.value.map((category) => ({ id: category, label: category, category: '分類' })),
+]);
+const termCategorySelectItems = computed<SelectionModalItem[]>(() => {
+  const current = selected.value?.category?.trim();
+  const items = [...termFilterCategories.value];
+  if (current && !items.includes(current)) items.push(current);
+  if (!items.includes('その他')) items.push('その他');
+  return items.map((category) => ({ id: category, label: category, category: '分類' }));
+});
+const tagTypeItems = computed<SelectionModalItem[]>(() => {
   const customTypes = project.value?.customTagTypes ?? [];
   const existingTypes = Array.from(new Set(tags.value.map((tag) => tag.type).filter(Boolean)));
   const managedTypes = Array.from(new Set([...customTypes, ...existingTypes.filter((type) => !builtinTagTypes.includes(type as typeof builtinTagTypes[number]))]));
-  const items = [
+  return [
     ...builtinTagTypes.map((type) => ({ id: type, label: getDisplayTypeLabel(type), category: '基本分類' })),
-    ...managedTypes.map((type) => ({ id: type, label: getDisplayTypeLabel(type), category: '追加分類', removable: true })),
+    ...managedTypes.map((type) => ({ id: type, label: getDisplayTypeLabel(type), category: '追加分類' })),
   ];
-  return items;
 });
 const tagTypes = computed(() => ['すべて', ...Array.from(new Set(
   tags.value
@@ -176,6 +195,12 @@ const tagTypes = computed(() => ['すべて', ...Array.from(new Set(
     .map((tag) => tag.type)
     .filter((type) => type && type !== '用語')
 ))]);
+const tagTypeFilterItems = computed<SelectionModalItem[]>(() => [
+  { id: 'すべて', label: 'すべて', category: '分類' },
+  ...tagTypes.value
+    .filter((type) => type !== 'すべて')
+    .map((type) => ({ id: type, label: getDisplayTypeLabel(type), category: '分類' })),
+]);
 const filteredTags = computed(() => {
   return tags.value.filter((tag) => {
     const matchMode = isTermListMode.value ? tag.source !== 'default' : tag.source === 'default';
@@ -195,35 +220,32 @@ const activeVersionChanged = computed(() => (activeVersion.value ? isTagVersionC
 const selectedRelatedTags = computed(() => tags.value.filter((tag) => selected.value?.relatedTagIds?.includes(tag.id)));
 const selectedTagColorItem = computed(() => tagColorItems.find((item) => item.id === selected.value?.color));
 const selectedTagStatusItem = computed(() => tagStatusItems.find((item) => item.id === selected.value?.status));
-const selectedTagTypeItem = computed(() => tagTypeItems.value.find((item) => item.id === selected.value?.type));
 const selectedSummaryItems = computed(() => selected.value?.summaryItems ?? []);
+const selectedHeaderClassification = computed(() => {
+  if (!selected.value) return '';
+  return getTagClassificationLabel(selected.value);
+});
 const addTagItems = computed<SelectionModalItem[]>(() => {
   if (!selected.value) return [];
+  const currentName = selected.value.name.trim();
   return tags.value
     .filter((tag) => tag.id !== selected.value?.id)
+    .filter((tag) => tag.name.trim() !== currentName)
     .map((tag) => ({
       id: tag.id,
       label: tag.name,
-      category: getDisplayTypeLabel(tag.type),
+      category: getTagClassificationLabel(tag),
       description: tag.memo,
       color: tag.color,
-      disabled: selected.value?.relatedTagIds?.includes(tag.id) ?? false,
     }));
-});
-const removeTagItems = computed<SelectionModalItem[]>(() => {
-  return selectedRelatedTags.value.map((tag) => ({
-    id: tag.id,
-    label: tag.name,
-    category: getDisplayTypeLabel(tag.type),
-    description: tag.memo,
-    color: tag.color,
-  }));
 });
 const selectedTagColorSummary = computed(() => {
   if (!selected.value) return '';
   if (!selectedTagColorItem.value) return selected.value.color;
   return `${selected.value.color} / ${selectedTagColorItem.value.family} ${selectedTagColorItem.value.shade}`;
 });
+const modeToggleLabel = computed(() => (isTermListMode.value ? '用語' : 'タグ'));
+const modeToggleSubLabel = computed(() => (isTermListMode.value ? 'タグ' : '用語'));
 
 function getDisplayTypeLabel(type?: string) {
   if (!type) return '';
@@ -231,11 +253,17 @@ function getDisplayTypeLabel(type?: string) {
   return type.endsWith('タグ') ? type.slice(0, -2) : type;
 }
 
+function getTagClassificationLabel(tag?: Tag) {
+  if (!tag) return '';
+  if (tag.type === '用語' || tag.source !== 'default') return tag.category || 'その他';
+  return getDisplayTypeLabel(tag.type);
+}
+
 watch(selectedId, () => {
   isEditing.value = false;
   nameModalOpen.value = false;
+  settingsMenuOpen.value = false;
   versionDeleteTargetId.value = '';
-  relatedTagDeleteTarget.value = null;
   summaryDeleteTargetId.value = '';
 });
 
@@ -352,47 +380,38 @@ function updateTagStatus(item: SelectionModalItem) {
   statusModalOpen.value = false;
 }
 
-function updateTagType(item: TagTypeModalItem) {
+function updateCategoryFilter(item: SelectionModalItem) {
+  categoryFilter.value = item.id;
+  categoryFilterModalOpen.value = false;
+}
+
+function updateTypeFilter(item: SelectionModalItem) {
+  typeFilter.value = item.id;
+  typeFilterModalOpen.value = false;
+}
+
+const classificationSelectItems = computed<SelectionModalItem[]>(() => {
+  if (!selected.value) return [];
+  return (selected.value.type === '用語' || selected.value.source !== 'default')
+    ? termCategorySelectItems.value
+    : tagTypeItems.value;
+});
+
+function openClassificationModal() {
   if (!selected.value || isProjectTitleTag.value) return;
-  selected.value.type = item.id;
+  categorySelectModalOpen.value = true;
+}
+
+function updateSelectedClassification(item: SelectionModalItem) {
+  if (!selected.value || isProjectTitleTag.value) return;
+  if (selected.value.type === '用語' || selected.value.source !== 'default') {
+    selected.value.category = item.id;
+  } else {
+    selected.value.type = item.id;
+  }
   selected.value.updatedAt = nowIso();
   syncTagActiveVersion(selected.value);
-  typeModalOpen.value = false;
-}
-
-function addTagType(label: string) {
-  const normalized = label.trim();
-  if (!normalized || !project.value) return;
-  project.value.customTagTypes ??= [];
-  if (builtinTagTypes.includes(normalized as typeof builtinTagTypes[number])) return;
-  if (!project.value.customTagTypes.includes(normalized)) {
-    project.value.customTagTypes.push(normalized);
-    project.value.updatedAt = nowIso();
-  }
-}
-
-function removeTagType(item: TagTypeModalItem) {
-  if (!project.value) return;
-  project.value.customTagTypes = (project.value.customTagTypes ?? []).filter((type) => type !== item.id);
-  const now = nowIso();
-  tags.value
-    .filter((tag) => tag.type === item.id)
-    .forEach((tag) => {
-      tag.type = 'ユーザータグ';
-      tag.updatedAt = now;
-      syncTagActiveVersion(tag);
-    });
-  project.value.updatedAt = now;
-}
-
-function requestRemoveTagType(item: TagTypeModalItem) {
-  tagTypeDeleteTarget.value = item;
-}
-
-function confirmRemoveTagType() {
-  if (!tagTypeDeleteTarget.value) return;
-  removeTagType(tagTypeDeleteTarget.value);
-  tagTypeDeleteTarget.value = null;
+  categorySelectModalOpen.value = false;
 }
 
 function updateTagName(value: string) {
@@ -431,27 +450,16 @@ function updateTagCategory(value: string) {
 }
 
 
-function addRelatedTag(item: SelectionModalItem) {
+function toggleRelatedTag(item: SelectionModalItem) {
   if (!selected.value || isProjectTitleTag.value) return;
   selected.value.relatedTagIds ??= [];
-  if (!selected.value.relatedTagIds.includes(item.id)) selected.value.relatedTagIds.push(item.id);
+  if (selected.value.relatedTagIds.includes(item.id)) {
+    selected.value.relatedTagIds = selected.value.relatedTagIds.filter((id) => id !== item.id);
+  } else {
+    selected.value.relatedTagIds.push(item.id);
+  }
   selected.value.updatedAt = nowIso();
   syncTagActiveVersion(selected.value);
-  tagModalOpen.value = false;
-}
-
-function removeRelatedTag(item: SelectionModalItem) {
-  relatedTagDeleteTarget.value = item;
-}
-
-function confirmRemoveRelatedTag() {
-  if (!selected.value || isProjectTitleTag.value || !relatedTagDeleteTarget.value) return;
-  if (!selected.value || isProjectTitleTag.value) return;
-  selected.value.relatedTagIds = selected.value.relatedTagIds.filter((id) => id !== relatedTagDeleteTarget.value?.id);
-  selected.value.updatedAt = nowIso();
-  syncTagActiveVersion(selected.value);
-  tagRemoveModalOpen.value = false;
-  relatedTagDeleteTarget.value = null;
 }
 
 function addSummaryItem() {
@@ -505,6 +513,27 @@ function switchVersion(versionId: string) {
   isEditing.value = false;
 }
 
+function openTag(tagId: string) {
+  if (!tagId || tagId === selectedId.value) return;
+  if (selectedId.value) selectionHistory.value.push(selectedId.value);
+  selectedId.value = tagId;
+}
+
+function selectTag(tagId: string) {
+  openTag(tagId);
+}
+
+function goBackToPreviousTag() {
+  while (selectionHistory.value.length) {
+    const previousId = selectionHistory.value.pop();
+    if (!previousId) continue;
+    if (!filteredTags.value.some((tag) => tag.id === previousId)) continue;
+    selectedId.value = previousId;
+    return true;
+  }
+  return false;
+}
+
 function removeCurrentVersion() {
   if (!selected.value || !activeVersion.value) return;
   versionDeleteTargetId.value = activeVersion.value.id;
@@ -533,28 +562,51 @@ function switchToTagList() {
 function switchToTermList() {
   listMode.value = 'term';
 }
+
+function toggleListMode() {
+  listMode.value = isTermListMode.value ? 'tag' : 'term';
+}
+
+function openTagCharacterSearch() {
+  if (!selected.value) return;
+  router.push({
+    path: `/project/${projectId}/characters`,
+    query: { tagId: selected.value.id },
+  });
+}
 </script>
 
 <template>
-  <AppHeader :project-id="projectId" title="タグ" />
+  <AppHeader :project-id="projectId" title="タグ" :back-handler="goBackToPreviousTag" />
   <main class="page split-page">
     <section class="card side-list fixed-side-list" :class="{ 'term-side-list': isTermListMode }">
       <div class="term-side-toolbar">
         <div class="tag-toolbar-top">
           <button class="tag-add-button" @click="addTag">＋</button>
-          <div class="tag-mode-switch">
-            <button type="button" :class="{ active: !isTermListMode }" @click="switchToTagList">タグ</button>
-            <button type="button" :class="{ active: isTermListMode }" @click="switchToTermList">用語</button>
-          </div>
+          <button type="button" class="tag-mode-toggle" :class="{ 'term-mode': isTermListMode }" @click="toggleListMode">
+            <span class="tag-mode-toggle-stack">
+              <span class="tag-mode-toggle-sub">{{ modeToggleSubLabel }}</span>
+              <span class="tag-mode-toggle-main">{{ modeToggleLabel }}</span>
+            </span>
+          </button>
         </div>
-        <select v-if="!isTermListMode" v-model="typeFilter">
-          <option v-for="type in tagTypes" :key="type" :value="type">{{ type === 'すべて' ? type : getDisplayTypeLabel(type) }}</option>
-        </select>
-        <input v-model="keyword" :placeholder="isTermListMode ? '用語検索' : 'タグ検索'" />
-        <select v-if="isTermListMode" v-model="categoryFilter">
-          <option value="すべて">すべて</option>
-          <option v-for="category in termCategories" :key="category" :value="category">{{ category }}</option>
-        </select>
+        <button
+          v-if="isTermListMode"
+          type="button"
+          class="list-button tag-filter-button"
+          @click="categoryFilterModalOpen = true"
+        >
+          <span class="tag-filter-label">分類</span>
+        </button>
+        <button
+          v-else
+          type="button"
+          class="list-button tag-filter-button"
+          @click="typeFilterModalOpen = true"
+        >
+          <span class="tag-filter-label">分類</span>
+        </button>
+        <input v-model="keyword" class="side-search-input" :placeholder="isTermListMode ? '用語検索' : 'タグ検索'" />
       </div>
       <div class="scroll-list">
         <button
@@ -566,16 +618,16 @@ function switchToTermList() {
             'default-tag-item': tag.source === 'default',
             'user-tag-item': tag.source !== 'default',
           }"
-          @click="selectedId = tag.id"
+          :style="{ borderLeftColor: tag.color }"
+          @click="openTag(tag.id)"
         >
-          <span class="tag-swatch" :style="{ backgroundColor: tag.color }"></span>
           <span class="tag-list-main">
             <span class="ruby-stack list-ruby" :class="{ 'no-ruby': !tag.ruby }">
               <span v-if="tag.ruby" class="ruby-text">{{ tag.ruby }}</span>
               <span class="ruby-base">{{ tag.name }}</span>
             </span>
+            <small class="tag-list-sub">{{ getTagClassificationLabel(tag) }}</small>
           </span>
-          <small>{{ isTermListMode ? (tag.category || 'その他') : getDisplayTypeLabel(tag.type) }}</small>
         </button>
       </div>
     </section>
@@ -587,7 +639,7 @@ function switchToTermList() {
     >
       <div class="editor-sticky-header">
         <div class="version-bar">
-          <div class="version-tabs">
+          <div class="version-tabs" :class="{ 'is-scrollable': selectedVersions.length > 5 }">
             <button
               v-for="(version, index) in selectedVersions"
               :key="version.id"
@@ -602,41 +654,64 @@ function switchToTermList() {
           <div class="version-actions">
             <button type="button" class="secondary" @click="addVersion">＋</button>
             <button type="button" class="secondary" :disabled="isProjectTitleTag" @click="toggleEditMode">{{ isEditing ? '✓' : '✎' }}</button>
-            <button type="button" class="secondary" :disabled="selectedVersions.length <= 1" @click="removeCurrentVersion">V削除</button>
-            <button type="button" class="danger" :disabled="isProjectTitleTag" @click="requestDeleteTag">タグ削除</button>
+            <div class="version-settings-wrap">
+              <button type="button" class="secondary" @click="settingsMenuOpen = !settingsMenuOpen">⚙</button>
+              <div v-if="settingsMenuOpen" class="version-settings-menu">
+                <button type="button" class="secondary" :disabled="selectedVersions.length <= 1" @click="settingsMenuOpen = false; removeCurrentVersion()">バージョン削除</button>
+                <button type="button" class="danger" :disabled="isProjectTitleTag" @click="settingsMenuOpen = false; requestDeleteTag()">タグ削除</button>
+              </div>
+            </div>
           </div>
         </div>
         <section class="name-display-row compact-name-row">
           <div class="field-label-value">
             <div class="name-label-line">
               <button v-if="isEditing" type="button" class="inline-edit-button" :disabled="isProjectTitleTag" @click="nameModalOpen = true">✎</button>
-              <strong class="section-label">{{ isTermTag ? '用語名' : 'タグ名' }}</strong>
+              <strong class="section-label">
+                {{ isEditing ? (isTermTag ? '用語名' : 'タグ名') : selectedHeaderClassification }}
+              </strong>
             </div>
-            <span class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
+            <button
+              v-if="!isEditing && !isProjectTitleTag"
+              type="button"
+              class="name-search-trigger"
+              @click="openTagCharacterSearch"
+            >
+              <span class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
+                <span v-if="selected.ruby" class="ruby-text">{{ selected.ruby }}</span>
+                <span class="ruby-base">{{ selected.name || '名前未設定' }}</span>
+              </span>
+            </button>
+            <span v-else class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
               <span v-if="selected.ruby" class="ruby-text">{{ selected.ruby }}</span>
               <span class="ruby-base">{{ selected.name || '名前未設定' }}</span>
             </span>
           </div>
         </section>
-        <section class="inline-panel sticky-related-panel">
-          <div class="panel-heading">
-            <h3>関連タグ</h3>
-            <div v-if="isEditing" class="button-row">
-              <button type="button" class="secondary" :disabled="isProjectTitleTag" @click="tagModalOpen = true">＋ タグ追加</button>
-              <button type="button" class="secondary" :disabled="isProjectTitleTag || !selectedRelatedTags.length" @click="tagRemoveModalOpen = true">タグ削除</button>
+        <section v-if="!relatedTagsModalOpen" class="inline-panel sticky-related-panel">
+          <div class="panel-heading sticky-related-heading">
+            <div class="sticky-related-inline">
+              <button v-if="isEditing" type="button" class="inline-edit-button" :disabled="isProjectTitleTag" @click="relatedTagsModalOpen = true">✎</button>
+              <span class="sticky-related-label">タグ:</span>
+              <div v-if="selectedRelatedTags.length" class="sticky-related-chips">
+                <button
+                  v-for="tag in selectedRelatedTags"
+                  :key="tag.id"
+                  type="button"
+                  class="selected-chip selected-chip-lined related-tag-link"
+                  :style="{ borderLeftColor: tag.color }"
+                  @click="selectTag(tag.id)"
+                >
+                  {{ tag.name }}
+                </button>
+              </div>
+              <span v-else class="hint-text">未設定</span>
             </div>
           </div>
-          <div v-if="selectedRelatedTags.length" class="chip-grid">
-            <span v-for="tag in selectedRelatedTags" :key="tag.id" class="selected-chip">
-              <span class="tag-swatch" :style="{ backgroundColor: tag.color }"></span>
-              {{ tag.name }}
-            </span>
-          </div>
-          <p v-else class="hint-text">未設定</p>
         </section>
       </div>
       <div class="editor-scroll-body">
-        <section class="profile-section">
+        <section v-if="isEditing" class="profile-section">
           <button type="button" class="section-toggle-header" disabled>
             <span>▼</span>
             <strong>基本情報</strong>
@@ -645,11 +720,11 @@ function switchToTermList() {
             <div class="tag-meta-row">
               <section class="field">
                 <div class="name-label-line">
-                  <button v-if="isEditing" type="button" class="inline-edit-button" :disabled="isProjectTitleTag" @click="typeModalOpen = true">✎</button>
+                  <button v-if="isEditing" type="button" class="inline-edit-button" :disabled="isProjectTitleTag" @click="openClassificationModal">✎</button>
                   <span>分類</span>
                 </div>
                 <div class="select-summary">
-                  <strong>{{ getDisplayTypeLabel(selectedTagTypeItem?.label || selected.type) }}</strong>
+                  <strong>{{ getTagClassificationLabel(selected) }}</strong>
                 </div>
               </section>
 
@@ -658,9 +733,8 @@ function switchToTermList() {
                   <button v-if="isEditing" type="button" class="inline-edit-button" :disabled="isProjectTitleTag" @click="colorModalOpen = true">✎</button>
                   <span>色</span>
                 </div>
-                <div class="select-summary">
+                <div class="select-summary color-summary-lined" :style="{ borderLeftColor: selected.color }">
                   <strong>
-                    <span class="tag-swatch inline-swatch" :style="{ backgroundColor: selected.color }"></span>
                     {{ selectedTagColorSummary }}
                   </strong>
                 </div>
@@ -763,6 +837,33 @@ function switchToTermList() {
     />
 
     <SelectionModal
+      :open="typeFilterModalOpen"
+      title="タグ分類"
+      :items="tagTypeFilterItems"
+      :selected-id="typeFilter"
+      @close="typeFilterModalOpen = false"
+      @select="updateTypeFilter"
+    />
+
+    <SelectionModal
+      :open="categoryFilterModalOpen"
+      title="用語分類"
+      :items="termCategoryFilterItems"
+      :selected-id="categoryFilter"
+      @close="categoryFilterModalOpen = false"
+      @select="updateCategoryFilter"
+    />
+
+    <SelectionModal
+      :open="categorySelectModalOpen"
+      title="分類"
+      :items="classificationSelectItems"
+      :selected-id="selected?.type === '用語' || selected?.source !== 'default' ? (selected?.category || '') : (selected?.type || '')"
+      @close="categorySelectModalOpen = false"
+      @select="updateSelectedClassification"
+    />
+
+    <SelectionModal
       :open="statusModalOpen"
       title="タグ状態"
       :items="tagStatusItems"
@@ -772,26 +873,6 @@ function switchToTermList() {
       @select="updateTagStatus"
     />
 
-    <TagTypeModal
-      :open="typeModalOpen"
-      title="タグ分類"
-      :items="tagTypeItems"
-      :selected-id="selected?.type || ''"
-      @close="typeModalOpen = false"
-      @select="updateTagType"
-      @add="addTagType"
-      @remove="requestRemoveTagType"
-    />
-
-    <ConfirmModal
-      :open="Boolean(tagTypeDeleteTarget)"
-      title="タグ分類を削除"
-      :message="`「${tagTypeDeleteTarget?.label || ''}」を削除します。使用中のタグは「ユーザー」に戻ります。`"
-      confirm-label="削除"
-      @close="tagTypeDeleteTarget = null"
-      @confirm="confirmRemoveTagType"
-    />
-
     <ConfirmModal
       :open="Boolean(versionDeleteTargetId)"
       title="タグ版を削除"
@@ -799,15 +880,6 @@ function switchToTermList() {
       confirm-label="版を削除"
       @close="versionDeleteTargetId = ''"
       @confirm="confirmRemoveCurrentVersion"
-    />
-
-    <ConfirmModal
-      :open="Boolean(relatedTagDeleteTarget)"
-      title="関連タグを削除"
-      :message="`「${relatedTagDeleteTarget?.label || ''}」を関連タグから外します。`"
-      confirm-label="関連タグを削除"
-      @close="relatedTagDeleteTarget = null"
-      @confirm="confirmRemoveRelatedTag"
     />
 
     <ConfirmModal
@@ -829,25 +901,15 @@ function switchToTermList() {
     />
 
     <SelectionModal
-      :open="tagModalOpen"
+      :open="relatedTagsModalOpen"
       title="関連タグ"
       :items="addTagItems"
       layout="grid"
-      :selected-id="''"
+      mode="check"
+      :selected-ids="selected?.relatedTagIds || []"
       empty-text="タグがありません。"
-      @close="tagModalOpen = false"
-      @select="addRelatedTag"
-    />
-
-    <SelectionModal
-      :open="tagRemoveModalOpen"
-      title="削除する関連タグ"
-      :items="removeTagItems"
-      layout="grid"
-      :selected-id="''"
-      empty-text="削除できるタグがありません。"
-      @close="tagRemoveModalOpen = false"
-      @select="removeRelatedTag"
+      @close="relatedTagsModalOpen = false"
+      @toggle="toggleRelatedTag"
     />
   </main>
 </template>

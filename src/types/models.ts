@@ -47,6 +47,7 @@ export interface CharacterCustomField {
 export interface CharacterVersionData {
   name: string;
   ruby: string;
+  color: string;
   alias: string;
   age: string;
   gender: string;
@@ -95,6 +96,7 @@ export interface Character {
   projectId: ID;
   name: string;
   ruby: string;
+  color: string;
   alias: string;
   age: string;
   gender: string;

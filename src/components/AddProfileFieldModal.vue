@@ -64,7 +64,6 @@ function submitField() {
       <section class="modal-panel add-profile-field-modal" role="dialog" aria-modal="true" aria-label="プロフィール項目追加" @click.stop>
         <header class="modal-header">
           <h2>{{ title || 'プロフィール項目追加' }}</h2>
-          <button class="ghost" type="button" @click="emit('close')">閉じる</button>
         </header>
 
         <div class="profile-add-form">
@@ -90,7 +89,7 @@ function submitField() {
           </label>
         </div>
 
-        <div class="button-row">
+        <div class="button-row modal-footer">
           <button v-if="showDelete" type="button" class="danger" @click="emit('remove')">削除</button>
           <button type="button" @click="submitField">{{ confirmLabel || '追加' }}</button>
           <button type="button" class="secondary" @click="emit('close')">キャンセル</button>

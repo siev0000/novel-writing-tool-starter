@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import ColorPaletteModal from '../components/ColorPaletteModal.vue';
+import type { ColorPaletteItem } from '../components/ColorPaletteModal.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import AppHeader from '../components/AppHeader.vue';
 import CharacterNameModal from '../components/CharacterNameModal.vue';
 import CharacterRelationshipModal from '../components/CharacterRelationshipModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
+import { DEFAULT_CHARACTER_COLOR, tagColorItems } from '../constants/colorPalette';
 import TextField from '../components/TextField.vue';
 import {
   activateCharacterVersion,
@@ -62,20 +65,25 @@ const characterProfileKeys = [
 ] as const;
 type CharacterProfileKey = typeof characterProfileKeys[number];
 
-const projectId = useRoute().params.projectId as string;
+const route = useRoute();
+const router = useRouter();
+const projectId = route.params.projectId as string;
 const profileSectionOrder = ['基本情報', '人物像', '能力', '話し方', '外見', 'その他'] as const;
 const selectedId = ref('');
+const keyword = ref('');
+const tagFilterId = ref('すべて');
+const colorModalOpen = ref(false);
 const tagModalOpen = ref(false);
-const tagRemoveModalOpen = ref(false);
-const tagActionsVisible = ref(false);
+const tagFilterModalOpen = ref(false);
 const nameModalOpen = ref(false);
 const relationshipModalOpen = ref(false);
 const relationshipDeleteModalOpen = ref(false);
 const deleteTargetModalOpen = ref(false);
+const isEditing = ref(false);
+const settingsMenuOpen = ref(false);
 const characterDeleteTargetId = ref('');
 const characterVersionDeleteTargetId = ref('');
 const relationshipDeleteTargetId = ref('');
-const relatedTagDeleteTarget = ref<SelectionModalItem | null>(null);
 const characters = computed(() => dataStore.characters.filter((c) => c.projectId === projectId));
 const tags = computed(() => dataStore.tags.filter((tag) => tag.projectId === projectId && tag.status === 'active' && tag.type !== 'ジャンルタグ'));
 const relationships = computed(() => dataStore.relationships.filter((relationship) => relationship.projectId === projectId));
@@ -83,6 +91,21 @@ const selected = computed(() => dataStore.characters.find((c) => c.id === select
 const selectedVersions = computed(() => selected.value?.versions ?? []);
 const activeVersion = computed(() => (selected.value ? getCharacterActiveVersion(selected.value) : undefined));
 const activeVersionChanged = computed(() => (activeVersion.value ? isCharacterVersionChanged(activeVersion.value) : false));
+const selectedColorItem = computed(() => tagColorItems.find((item) => item.id === selected.value?.color));
+const selectedColorSummary = computed(() => {
+  if (!selected.value) return '';
+  if (!selectedColorItem.value) return selected.value.color;
+  return `${selected.value.color} / ${selectedColorItem.value.family} ${selectedColorItem.value.shade}`;
+});
+const tagFilterItems = computed<SelectionModalItem[]>(() => [
+  { id: 'すべて', label: 'すべて', category: 'タグ検索' },
+  ...tags.value.map((tag) => ({
+    id: tag.id,
+    label: tag.name,
+    category: getDisplayTypeLabel(tag.type),
+    color: tag.color,
+  })),
+]);
 const project = computed(() => getProject(projectId));
 const collapsedSections = ref<Record<string, boolean>>({});
 const profileFields = computed(() => {
@@ -102,21 +125,23 @@ const groupedProfileFields = computed(() => {
     .filter((group) => group.fields.length > 0);
 });
 const selectedTags = computed(() => tags.value.filter((tag) => selected.value?.tagIds?.includes(tag.id)));
+const filteredCharacters = computed(() => {
+  const query = keyword.value.trim();
+  return characters.value.filter((character) => {
+    const matchKeyword = !query || `${character.name} ${character.ruby || ''}`.includes(query);
+    const matchTag = tagFilterId.value === 'すべて' || character.tagIds?.includes(tagFilterId.value);
+    return matchKeyword && matchTag;
+  });
+});
+function getDisplayTypeLabel(type?: string) {
+  if (!type) return '';
+  return type.endsWith('タグ') ? type.slice(0, -2) : type;
+}
 const addTagItems = computed<SelectionModalItem[]>(() => {
   return tags.value.map((tag) => ({
     id: tag.id,
     label: tag.name,
-    category: tag.type,
-    description: tag.memo,
-    color: tag.color,
-    disabled: selected.value?.tagIds?.includes(tag.id) ?? false,
-  }));
-});
-const removeTagItems = computed<SelectionModalItem[]>(() => {
-  return selectedTags.value.map((tag) => ({
-    id: tag.id,
-    label: tag.name,
-    category: tag.type,
+    category: getDisplayTypeLabel(tag.type),
     description: tag.memo,
     color: tag.color,
   }));
@@ -210,7 +235,9 @@ const versionDeleteTargetLabel = computed(() => {
 });
 
 watch(selectedId, () => {
-  tagActionsVisible.value = false;
+  isEditing.value = false;
+  settingsMenuOpen.value = false;
+  colorModalOpen.value = false;
   nameModalOpen.value = false;
   relationshipModalOpen.value = false;
   relationshipDeleteModalOpen.value = false;
@@ -218,7 +245,25 @@ watch(selectedId, () => {
   characterDeleteTargetId.value = '';
   characterVersionDeleteTargetId.value = '';
   relationshipDeleteTargetId.value = '';
-  relatedTagDeleteTarget.value = null;
+});
+
+watch(
+  () => route.query.tagId,
+  (queryTagId) => {
+    tagFilterId.value = typeof queryTagId === 'string' && queryTagId ? queryTagId : 'すべて';
+  },
+  { immediate: true }
+);
+
+watch(tagFilterId, (value) => {
+  const current = typeof route.query.tagId === 'string' && route.query.tagId ? route.query.tagId : 'すべて';
+  if (current === value) return;
+  router.replace({
+    path: route.path,
+    query: value === 'すべて'
+      ? { ...route.query, tagId: undefined }
+      : { ...route.query, tagId: value },
+  });
 });
 
 watch(groupedProfileFields, (groups) => {
@@ -230,7 +275,7 @@ watch(groupedProfileFields, (groups) => {
 }, { immediate: true });
 
 watch(
-  characters,
+  filteredCharacters,
   (items) => {
     if (!items.length) {
       selectedId.value = '';
@@ -247,6 +292,7 @@ function addCharacter() {
   const now = nowIso();
   const c: Character = {
     id: createId(), projectId, name: '新しい人物', ruby: '', alias: '', age: '', gender: '', birthday: '',
+    color: DEFAULT_CHARACTER_COLOR,
     race: '', affiliation: '', origin: '', height: '', weight: '', role: '', personality: '', goal: '',
     behaviorPrinciple: '', likes: '', dislikes: '', weakness: '', secret: '', battleStyle: '', weapon: '',
     magic: '', firstPerson: '', secondPerson: '', speechStyle: '', skill: '', appearance: '', hairStyle: '',
@@ -302,46 +348,29 @@ function confirmDeleteVersion() {
   if (!selected.value || !characterVersionDeleteTargetId.value) return;
   deleteCharacterVersion(selected.value, characterVersionDeleteTargetId.value);
   characterVersionDeleteTargetId.value = '';
-  tagActionsVisible.value = false;
+  isEditing.value = false;
+  settingsMenuOpen.value = false;
   nameModalOpen.value = false;
 }
 
 function switchVersion(versionId: string) {
   if (!selected.value) return;
   activateCharacterVersion(selected.value, versionId);
-  tagActionsVisible.value = false;
+  isEditing.value = false;
+  settingsMenuOpen.value = false;
   nameModalOpen.value = false;
 }
 
-function addTag(item: SelectionModalItem) {
+function toggleTag(item: SelectionModalItem) {
   if (!selected.value) return;
   selected.value.tagIds ??= [];
-  if (!selected.value.tagIds.includes(item.id)) selected.value.tagIds.push(item.id);
+  if (selected.value.tagIds.includes(item.id)) {
+    selected.value.tagIds = selected.value.tagIds.filter((id) => id !== item.id);
+  } else {
+    selected.value.tagIds.push(item.id);
+  }
   selected.value.updatedAt = nowIso();
   syncCharacterActiveVersion(selected.value);
-  tagModalOpen.value = false;
-}
-
-function removeTag(tagId: string) {
-  if (!selected.value) return;
-  selected.value.tagIds = selected.value.tagIds.filter((id) => id !== tagId);
-  selected.value.updatedAt = nowIso();
-  syncCharacterActiveVersion(selected.value);
-  tagRemoveModalOpen.value = false;
-}
-
-function removeTagByItem(item: SelectionModalItem) {
-  relatedTagDeleteTarget.value = item;
-}
-
-function confirmRemoveTag() {
-  if (!relatedTagDeleteTarget.value) return;
-  removeTag(relatedTagDeleteTarget.value.id);
-  relatedTagDeleteTarget.value = null;
-}
-
-function toggleTagActions() {
-  tagActionsVisible.value = !tagActionsVisible.value;
 }
 
 function updateName(name: string, ruby: string) {
@@ -351,6 +380,19 @@ function updateName(name: string, ruby: string) {
   selected.value.updatedAt = nowIso();
   syncCharacterActiveVersion(selected.value);
   nameModalOpen.value = false;
+}
+
+function updateCharacterColor(item: ColorPaletteItem) {
+  if (!selected.value) return;
+  selected.value.color = item.id;
+  selected.value.updatedAt = nowIso();
+  syncCharacterActiveVersion(selected.value);
+  colorModalOpen.value = false;
+}
+
+function updateTagFilter(item: SelectionModalItem) {
+  tagFilterId.value = item.id;
+  tagFilterModalOpen.value = false;
 }
 
 function openRelationshipModal() {
@@ -457,6 +499,11 @@ function versionChanged(version: CharacterVersion) {
   return isCharacterVersionChanged(version);
 }
 
+function toggleEditMode() {
+  if (!selected.value) return;
+  isEditing.value = !isEditing.value;
+}
+
 function toggleProfileSection(section: string) {
   collapsedSections.value = {
     ...collapsedSections.value,
@@ -470,13 +517,28 @@ function toggleProfileSection(section: string) {
   <AppHeader :project-id="projectId" title="登場人物" />
   <main class="page split-page">
     <section class="card side-list fixed-side-list">
-      <div class="list-toolbar">
-        <button @click="addCharacter">＋ 人物追加</button>
-        <b>{{ characters.length }}</b>
+      <div class="side-toolbar-stack">
+        <div class="list-toolbar">
+          <button @click="addCharacter">＋ 追加</button>
+          <b>{{ characters.length }}</b>
+        </div>
+        <div class="term-side-toolbar">
+          <button type="button" class="list-button tag-filter-button compact-filter-button" @click="tagFilterModalOpen = true">
+            <span class="tag-filter-label compact-filter-label">タグ検索</span>
+          </button>
+          <input v-model="keyword" class="side-search-input compact-side-search-input" placeholder="人物検索" />
+        </div>
       </div>
       <div class="scroll-list">
-        <button v-for="c in characters" :key="c.id" class="list-button" :class="{ active: c.id === selectedId }" @click="selectedId = c.id">
-          <span class="ruby-stack list-ruby" :class="{ 'no-ruby': !c.ruby }">
+        <button
+          v-for="c in filteredCharacters"
+          :key="c.id"
+          class="list-button tag-list-button"
+          :class="{ active: c.id === selectedId }"
+          :style="{ borderLeftColor: c.color || DEFAULT_CHARACTER_COLOR }"
+          @click="selectedId = c.id"
+        >
+          <span class="ruby-stack list-ruby tag-list-main" :class="{ 'no-ruby': !c.ruby }">
             <span v-if="c.ruby" class="ruby-text">{{ c.ruby }}</span>
             <span class="ruby-base">{{ c.name }}</span>
           </span>
@@ -491,7 +553,7 @@ function toggleProfileSection(section: string) {
     >
       <div class="editor-sticky-header">
         <div class="version-bar">
-          <div class="version-tabs">
+        <div class="version-tabs" :class="{ 'is-scrollable': selectedVersions.length > 5 }">
             <button
               v-for="(version, index) in selectedVersions"
               :key="version.id"
@@ -505,13 +567,20 @@ function toggleProfileSection(section: string) {
           </div>
           <div class="version-actions">
             <button type="button" class="secondary" @click="addVersion">＋</button>
-            <button type="button" class="danger" @click="requestDeleteCharacter">削除</button>
+            <button type="button" class="secondary" @click="toggleEditMode">{{ isEditing ? '✓' : '✎' }}</button>
+            <div class="version-settings-wrap">
+              <button type="button" class="secondary" @click="settingsMenuOpen = !settingsMenuOpen">⚙</button>
+              <div v-if="settingsMenuOpen" class="version-settings-menu">
+                <button type="button" class="secondary" :disabled="selectedVersions.length <= 1" @click="settingsMenuOpen = false; characterVersionDeleteTargetId = activeVersion?.id || ''">バージョン削除</button>
+                <button type="button" class="danger" @click="settingsMenuOpen = false; requestDeleteCharacter()">人物削除</button>
+              </div>
+            </div>
           </div>
         </div>
         <section class="name-display-row compact-name-row">
           <div class="field-label-value">
             <div class="name-label-line">
-              <button type="button" class="inline-edit-button" @click="nameModalOpen = true">✎</button>
+              <button v-if="isEditing" type="button" class="inline-edit-button" @click="nameModalOpen = true">✎</button>
               <strong class="section-label">名前</strong>
             </div>
             <span class="ruby-stack compact-name-value" :class="{ 'no-ruby': !selected.ruby }">
@@ -520,21 +589,24 @@ function toggleProfileSection(section: string) {
             </span>
           </div>
         </section>
-        <section class="inline-panel tag-panel" @click="toggleTagActions">
-          <div class="panel-heading">
-            <h3>関連タグ</h3>
-            <div v-if="tagActionsVisible" class="button-row">
-              <button type="button" class="secondary" @click.stop="tagModalOpen = true">＋ タグ追加</button>
-              <button type="button" class="secondary" :disabled="!selectedTags.length" @click.stop="tagRemoveModalOpen = true">タグ削除</button>
+        <section v-if="!tagModalOpen" class="inline-panel sticky-related-panel">
+          <div class="panel-heading sticky-related-heading">
+            <div class="sticky-related-inline">
+              <button v-if="isEditing" type="button" class="inline-edit-button" @click="tagModalOpen = true">✎</button>
+              <span class="sticky-related-label">タグ:</span>
+              <div v-if="selectedTags.length" class="sticky-related-chips">
+                <span
+                  v-for="tag in selectedTags"
+                  :key="tag.id"
+                  class="selected-chip selected-chip-lined"
+                  :style="{ borderLeftColor: tag.color }"
+                >
+                  {{ tag.name }}
+                </span>
+              </div>
+              <span v-else class="hint-text">未設定</span>
             </div>
           </div>
-          <div v-if="selectedTags.length" class="chip-grid">
-            <span v-for="tag in selectedTags" :key="tag.id" class="selected-chip">
-              <span class="tag-swatch" :style="{ backgroundColor: tag.color }"></span>
-              {{ tag.name }}
-            </span>
-          </div>
-          <p v-else class="hint-text">未設定</p>
         </section>
       </div>
       <div class="editor-scroll-body">
@@ -544,6 +616,15 @@ function toggleProfileSection(section: string) {
             <strong>{{ group.section }}</strong>
           </button>
           <div v-if="!collapsedSections[group.section]" class="profile-section-body">
+            <section v-if="group.section === '基本情報'" class="field">
+              <div class="name-label-line">
+                <button v-if="isEditing" type="button" class="inline-edit-button" @click="colorModalOpen = true">✎</button>
+                <span>色</span>
+              </div>
+              <div class="select-summary color-summary-lined" :style="{ borderLeftColor: selected.color || DEFAULT_CHARACTER_COLOR }">
+                <strong>{{ selectedColorSummary }}</strong>
+              </div>
+            </section>
             <TextField
               v-for="field in group.fields"
               :key="field.id"
@@ -587,20 +668,11 @@ function toggleProfileSection(section: string) {
         title="関連タグ"
         :items="addTagItems"
         layout="grid"
-        :selected-id="''"
+        mode="check"
+        :selected-ids="selected?.tagIds || []"
         empty-text="タグがありません。"
         @close="tagModalOpen = false"
-        @select="addTag"
-      />
-      <SelectionModal
-        :open="tagRemoveModalOpen"
-        title="削除する関連タグ"
-        :items="removeTagItems"
-        layout="grid"
-        :selected-id="''"
-        empty-text="削除できるタグがありません。"
-        @close="tagRemoveModalOpen = false"
-        @select="removeTagByItem"
+        @toggle="toggleTag"
       />
       <SelectionModal
         :open="relationshipDeleteModalOpen"
@@ -625,9 +697,33 @@ function toggleProfileSection(section: string) {
         @close="relationshipModalOpen = false"
         @save="saveRelationship"
       />
+      <ColorPaletteModal
+        :open="colorModalOpen"
+        title="人物色一覧"
+        :items="tagColorItems"
+        :selected-id="selected?.color || ''"
+        @close="colorModalOpen = false"
+        @select="updateCharacterColor"
+      />
     </section>
 
-    <section v-else class="card empty-state">人物を選択してください。</section>
+    <section v-else class="card empty-state">
+      <p>該当する人物がありません。</p>
+      <div class="button-row">
+        <button type="button" class="secondary" @click="tagFilterModalOpen = true">タグ検索</button>
+        <button type="button" class="secondary" @click="tagFilterId = 'すべて'; keyword = ''">絞り込み解除</button>
+      </div>
+    </section>
+
+    <SelectionModal
+      :open="tagFilterModalOpen"
+      title="タグ検索"
+      :items="tagFilterItems"
+      :selected-id="tagFilterId"
+      empty-text="タグがありません。"
+      @close="tagFilterModalOpen = false"
+      @select="updateTagFilter"
+    />
 
     <ConfirmModal
       :open="Boolean(characterDeleteTargetId)"
@@ -652,14 +748,6 @@ function toggleProfileSection(section: string) {
       confirm-label="相関を削除"
       @close="relationshipDeleteTargetId = ''"
       @confirm="confirmDeleteRelationship"
-    />
-    <ConfirmModal
-      :open="Boolean(relatedTagDeleteTarget)"
-      title="関連タグを削除"
-      :message="`「${relatedTagDeleteTarget?.label || ''}」を関連タグから外します。`"
-      confirm-label="関連タグを削除"
-      @close="relatedTagDeleteTarget = null"
-      @confirm="confirmRemoveTag"
     />
   </main>
 </template>

@@ -229,7 +229,7 @@ function confirmDeleteSelectedTerm() {
     >
       <div class="editor-sticky-header">
         <div class="version-bar">
-          <div class="version-tabs">
+          <div class="version-tabs" :class="{ 'is-scrollable': selectedVersions.length > 5 }">
             <button
               v-for="(version, index) in selectedVersions"
               :key="version.id"
