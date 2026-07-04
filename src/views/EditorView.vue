@@ -11,6 +11,7 @@ type EditorSelectionKind = 'chapter' | 'episode' | 'scene';
 
 const projectId = useRoute().params.projectId as string;
 const route = useRoute();
+const initialInfoPanelPosition = (localStorage.getItem('editor-info-panel-position') as 'bottom' | 'left') ?? 'bottom';
 
 ensureEpisodeChapters(projectId);
 
@@ -27,9 +28,9 @@ const newMemoType = ref<MemoType>('revision');
 const newMemoContent = ref('');
 const leftSidebarCollapsed = ref(false);
 const editorPanelCollapsed = ref(false);
-const editorTab = ref<'info' | 'memo' | 'export' | 'settings'>('info');
+const editorTab = ref<'info' | 'memo' | 'export' | 'settings'>(initialInfoPanelPosition === 'left' ? 'memo' : 'info');
 const infoTab = ref<'chapter' | 'episode' | 'scene'>('episode');
-const infoPanelPosition = ref<'bottom' | 'left'>((localStorage.getItem('editor-info-panel-position') as 'bottom' | 'left') ?? 'bottom');
+const infoPanelPosition = ref<'bottom' | 'left'>(initialInfoPanelPosition);
 const memoPopover = ref<{ memo: LineMemo; top: number } | null>(null);
 const memoPopoverPinned = ref(false);
 const visualLineCounts = ref<number[]>([]);
@@ -521,6 +522,9 @@ watch(editorFontSize, (value) => {
 
 watch(infoPanelPosition, (value) => {
   localStorage.setItem('editor-info-panel-position', value);
+  if (value === 'left' && editorTab.value === 'info') {
+    editorTab.value = 'memo';
+  }
 });
 
 watch(
@@ -774,6 +778,108 @@ function handleDocumentClick(event: MouseEvent) {
         <small>{{ selectedModeLabel }}</small>
       </div>
 
+      <div v-if="showSideInfoPanel" class="editor-main-split">
+        <section class="card side-info-panel">
+          <div class="editor-panel-section">
+            <div class="info-tab-bar">
+              <button type="button" class="editor-panel-tab info-subtab" :class="{ active: infoTab === 'chapter' }" @click="infoTab = 'chapter'">章</button>
+              <button type="button" class="editor-panel-tab info-subtab" :class="{ active: infoTab === 'episode' }" @click="infoTab = 'episode'">話</button>
+              <button
+                type="button"
+                class="editor-panel-tab info-subtab"
+                :class="{ active: infoTab === 'scene' }"
+                :disabled="selectedKind !== 'scene' || !selectedScene"
+                @click="infoTab = 'scene'"
+              >
+                シーン
+              </button>
+            </div>
+
+            <section v-if="infoTab === 'chapter' && selectedChapter" class="info-block">
+              <strong class="info-block-title">章プロット</strong>
+              <div class="info-list">
+                <div v-if="hasText(selectedChapter.purpose)" class="info-row"><span>章の目的</span><p>{{ selectedChapter.purpose }}</p></div>
+                <div v-if="hasText(selectedChapter.flow)" class="info-row"><span>章の流れ</span><p>{{ selectedChapter.flow }}</p></div>
+                <div v-if="hasText(selectedChapter.memo)" class="info-row"><span>メモ</span><p>{{ selectedChapter.memo }}</p></div>
+              </div>
+            </section>
+
+            <section v-if="infoTab === 'episode' && selectedEpisode" class="info-block">
+              <strong class="info-block-title">話プロット</strong>
+              <div class="info-list">
+                <div v-if="hasText(selectedEpisode.purpose)" class="info-row"><span>この話の目的</span><p>{{ selectedEpisode.purpose }}</p></div>
+                <div v-if="hasItems(selectedEpisodeCharacterNames)" class="info-row"><span>登場人物</span><p>{{ selectedEpisodeCharacterNames.join(' / ') }}</p></div>
+                <div v-if="hasItems(selectedEpisodeTagNames)" class="info-row"><span>関連タグ</span><p>{{ selectedEpisodeTagNames.join(' / ') }}</p></div>
+                <div v-if="hasText(selectedEpisode.startSituation)" class="info-row"><span>開始状況</span><p>{{ selectedEpisode.startSituation }}</p></div>
+                <div v-if="hasText(selectedEpisode.mainEvent)" class="info-row"><span>起きる事件</span><p>{{ selectedEpisode.mainEvent }}</p></div>
+                <div v-if="hasText(selectedEpisode.revealInfo)" class="info-row"><span>明かす情報</span><p>{{ selectedEpisode.revealInfo }}</p></div>
+                <div v-if="hasText(selectedEpisode.hiddenInfo)" class="info-row"><span>隠す情報</span><p>{{ selectedEpisode.hiddenInfo }}</p></div>
+                <div v-if="hasText(selectedEpisode.foreshadowing)" class="info-row"><span>伏線</span><p>{{ selectedEpisode.foreshadowing }}</p></div>
+                <div v-if="hasText(selectedEpisode.endingHook)" class="info-row"><span>ラストの引き</span><p>{{ selectedEpisode.endingHook }}</p></div>
+                <div v-if="hasText(selectedEpisode.memo)" class="info-row"><span>本文メモ</span><p>{{ selectedEpisode.memo }}</p></div>
+              </div>
+            </section>
+
+            <section v-if="infoTab === 'scene' && selectedKind === 'scene' && selectedScene" class="info-block">
+              <strong class="info-block-title">シーンプロット</strong>
+              <div class="info-list">
+                <div v-if="hasText(selectedScene.location)" class="info-row"><span>場所</span><p>{{ selectedScene.location }}</p></div>
+                <div v-if="hasText(selectedScene.time)" class="info-row"><span>時間</span><p>{{ selectedScene.time }}</p></div>
+                <div v-if="hasItems(selectedSceneCharacterNames)" class="info-row"><span>登場人物</span><p>{{ selectedSceneCharacterNames.join(' / ') }}</p></div>
+                <div v-if="hasText(selectedScene.event)" class="info-row"><span>起きること</span><p>{{ selectedScene.event }}</p></div>
+                <div v-if="hasText(selectedScene.conversationPurpose)" class="info-row"><span>会話の目的</span><p>{{ selectedScene.conversationPurpose }}</p></div>
+                <div v-if="hasText(selectedScene.conflict)" class="info-row"><span>衝突</span><p>{{ selectedScene.conflict }}</p></div>
+                <div v-if="hasText(selectedScene.result)" class="info-row"><span>結果</span><p>{{ selectedScene.result }}</p></div>
+                <div v-if="hasText(selectedScene.nextHook)" class="info-row"><span>次への繋ぎ</span><p>{{ selectedScene.nextHook }}</p></div>
+                <div v-if="hasItems(selectedSceneTagNames)" class="info-row"><span>関連タグ</span><p>{{ selectedSceneTagNames.join(' / ') }}</p></div>
+                <div v-if="hasText(selectedScene.memo)" class="info-row"><span>メモ</span><p>{{ selectedScene.memo }}</p></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="card editor-pane-card scene-pane-card">
+          <div class="editor-pane">
+          <div class="vscode-editor">
+            <div ref="lineViewRef" class="line-view" :style="editorLineNumberStyle">
+              <div class="line-view-inner">
+                <button
+                  v-for="(line, index) in displayedLines"
+                  :key="index"
+                  class="line-number"
+                  :class="{ hasMemo: memoForLine(index + 1) }"
+                  :style="{ minHeight: `calc(var(--editor-line-height) * ${visualLineCounts[index] || 1})` }"
+                  @mouseenter="hoverMemo(index + 1, $event)"
+                  @mouseleave="!memoPopoverPinned ? clearMemoPopover() : null"
+                  @click="pinMemo(index + 1, $event)"
+                >
+                  <span v-if="!memoForLine(index + 1)">{{ index + 1 }}</span>
+                  <span v-else class="line-number-badge">{{ index + 1 }}</span>
+                </button>
+              </div>
+            </div>
+            <textarea
+              ref="bodyTextareaRef"
+              class="body-textarea auto-textarea"
+              :style="editorTextStyle"
+              :value="displayedContent"
+              @scroll="syncLineViewScroll"
+              @input="updateSceneContent(($event.target as HTMLTextAreaElement).value)"
+            />
+          </div>
+          <div v-if="memoPopover" class="memo-popover" :style="{ top: `${memoPopover.top}px` }">
+            <strong class="memo-type-label">{{ getMemoTypeLabel(memoPopover.memo.memoType) }}</strong>
+            <p>{{ memoPopover.memo.content }}</p>
+          </div>
+          </div>
+          <div class="scene-editor-meta">
+            <span>文字数 {{ charCount }}</span>
+            <span>行数 {{ displayedLines.length }}</span>
+          </div>
+        </section>
+      </div>
+
+      <template v-else>
       <section class="card editor-pane-card" :class="{ 'scene-pane-card': selectedKind === 'scene' }">
         <div class="editor-pane">
         <div class="vscode-editor" :class="{ 'merged-episode-view': selectedKind !== 'scene' }">
@@ -815,10 +921,12 @@ function handleDocumentClick(event: MouseEvent) {
           <span>行数 {{ displayedLines.length }}</span>
         </div>
       </section>
+      </template>
 
       <section v-if="selectedKind === 'scene'" class="card editor-lower-panel scene-lower-panel" :class="{ collapsed: editorPanelCollapsed }">
-        <div class="editor-panel-tabs">
+        <div class="editor-panel-tabs" :class="{ 'side-info-mode': showSideInfoPanel }">
           <button
+            v-if="!showSideInfoPanel"
             type="button"
             class="editor-panel-tab"
             :class="{ active: editorTab === 'info' }"
@@ -943,6 +1051,13 @@ function handleDocumentClick(event: MouseEvent) {
               <span>文字サイズ</span>
               <select v-model.number="editorFontSize">
                 <option v-for="size in fontSizeOptions" :key="size" :value="size">{{ size }}px</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>情報表示位置</span>
+              <select v-model="infoPanelPosition">
+                <option value="bottom">下</option>
+                <option value="left">左</option>
               </select>
             </label>
           </div>
