@@ -98,7 +98,7 @@ const defaultCharacterProfileFields: Array<{
   { fieldKey: 'eyeColor', label: '目の色', section: '外見', inputType: 'text' },
   { fieldKey: 'build', label: '体格', section: '外見', inputType: 'text' },
   { fieldKey: 'clothing', label: '服装', section: '外見', inputType: 'textarea' },
-  { fieldKey: 'equipment', label: '装備', section: '外見', inputType: 'textarea' },
+  { fieldKey: 'equipment', label: '持ち物', section: '外見', inputType: 'textarea' },
 
   { fieldKey: 'memo', label: 'メモ', section: 'その他', inputType: 'textarea' },
 ];
@@ -380,6 +380,7 @@ export type ProjectTagViewSelection = {
   categoryFilter: string;
   typeFilter: string;
   listMode: 'tag' | 'term';
+  scrollTop: number;
 };
 
 export type ProjectCharacterViewSelection = {

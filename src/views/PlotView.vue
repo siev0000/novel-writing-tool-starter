@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
+import CharacterReferenceModal from '../components/CharacterReferenceModal.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
@@ -29,6 +30,7 @@ const episodeCharacterModalOpen = ref(false);
 const episodeTagAddModalOpen = ref(false);
 const episodeTagRemoveModalOpen = ref(false);
 const sceneCharacterModalOpen = ref(false);
+const referenceCharacterId = ref('');
 const deleteTarget = ref<{ kind: 'chapter' | 'episode' | 'scene'; id: string; label: string } | null>(null);
 const episodeTagDeleteTarget = ref<SelectionModalItem | null>(null);
 getProjectNavigatorSelection(projectId);
@@ -692,7 +694,7 @@ function toggleSceneCharacter(item: SelectionModalItem) {
             <button type="button" class="inline-edit-button" @click="episodeCharacterModalOpen = true">✎</button>
           </div>
           <div v-if="episodeSelectedCharacters.length" class="chip-grid">
-            <span v-for="character in episodeSelectedCharacters" :key="character.id" class="selected-chip">{{ character.name }}</span>
+            <button v-for="character in episodeSelectedCharacters" :key="character.id" type="button" class="selected-chip" @click="referenceCharacterId = character.id">{{ character.name }}</button>
           </div>
           <p v-else class="hint-text">未設定</p>
         </section>
@@ -744,7 +746,7 @@ function toggleSceneCharacter(item: SelectionModalItem) {
             <button type="button" class="inline-edit-button" @click="sceneCharacterModalOpen = true">✎</button>
           </div>
           <div v-if="sceneSelectedCharacters.length" class="chip-grid">
-            <span v-for="character in sceneSelectedCharacters" :key="character.id" class="selected-chip">{{ character.name }}</span>
+            <button v-for="character in sceneSelectedCharacters" :key="character.id" type="button" class="selected-chip" @click="referenceCharacterId = character.id">{{ character.name }}</button>
           </div>
           <p v-else class="hint-text">未設定</p>
         </section>
@@ -815,6 +817,12 @@ function toggleSceneCharacter(item: SelectionModalItem) {
       confirm-label="タグを削除"
       @close="episodeTagDeleteTarget = null"
       @confirm="confirmRemoveEpisodeTag"
+    />
+    <CharacterReferenceModal
+      v-if="referenceCharacterId"
+      :project-id="projectId"
+      :character-id="referenceCharacterId"
+      @close="referenceCharacterId = ''"
     />
   </main>
 </template>

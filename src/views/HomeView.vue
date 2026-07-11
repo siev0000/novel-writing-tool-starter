@@ -107,6 +107,11 @@ async function importProjectJson(event: Event) {
     <section class="card hero-card">
       <h2>作品を管理する</h2>
       <p>設定・人物・用語・プロット・本文を作品ごとに保存します。</p>
+      <section class="hint-box storage-warning">
+        <strong>保存について</strong>
+        <p>作品データは、この端末・このブラウザの localStorage に保存されています。ブラウザのサイトデータやキャッシュを削除すると、作品データも消える可能性があります。</p>
+        <p>端末変更前や大きな編集の前には、JSONバックアップを保存してください。</p>
+      </section>
       <label class="field">
         <span>新しい作品名</span>
         <input v-model="newProjectTitle" placeholder="例：天空の地アストラルヘイヴン" @keydown.enter="addProject" />

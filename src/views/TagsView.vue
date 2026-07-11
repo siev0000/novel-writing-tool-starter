@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import ColorPaletteModal from '../components/ColorPaletteModal.vue';
 import type { ColorPaletteItem } from '../components/ColorPaletteModal.vue';
@@ -36,6 +36,8 @@ const keyword = ref('');
 const categoryFilter = ref('すべて');
 const typeFilter = ref('すべて');
 const listMode = ref<'tag' | 'term'>('tag');
+const tagListRef = ref<HTMLElement | null>(null);
+const listScrollTop = ref(0);
 const tagDeleteTargetId = ref('');
 const colorModalOpen = ref(false);
 const statusModalOpen = ref(false);
@@ -261,6 +263,7 @@ function getSavedTagViewState() {
     categoryFilter: 'すべて',
     typeFilter: 'すべて',
     listMode: 'tag',
+    scrollTop: 0,
   };
 }
 
@@ -270,6 +273,19 @@ keyword.value = initialTagViewState.keyword;
 categoryFilter.value = initialTagViewState.categoryFilter;
 typeFilter.value = initialTagViewState.typeFilter;
 listMode.value = initialTagViewState.listMode;
+listScrollTop.value = initialTagViewState.scrollTop ?? 0;
+
+function saveListScrollPosition() {
+  listScrollTop.value = tagListRef.value?.scrollTop ?? 0;
+}
+
+function restoreListScrollPosition() {
+  nextTick(() => {
+    if (tagListRef.value) tagListRef.value.scrollTop = listScrollTop.value;
+  });
+}
+
+onMounted(restoreListScrollPosition);
 
 function getDisplayTypeLabel(type?: string) {
   if (!type) return '';
@@ -336,7 +352,7 @@ watch(typeFilter, (value) => {
 });
 
 watch(
-  [selectedId, keyword, categoryFilter, typeFilter, listMode],
+  [selectedId, keyword, categoryFilter, typeFilter, listMode, listScrollTop],
   () => {
     transientStore.tagViewSelections[projectId] = {
       selectedId: selectedId.value,
@@ -344,6 +360,7 @@ watch(
       categoryFilter: categoryFilter.value,
       typeFilter: typeFilter.value,
       listMode: listMode.value,
+      scrollTop: listScrollTop.value,
     };
   },
   { immediate: true }
@@ -685,7 +702,7 @@ function openTagCharacterSearch() {
         </button>
         <input v-model="keyword" class="side-search-input" :placeholder="isTermListMode ? '用語検索' : 'タグ検索'" />
       </div>
-      <div class="scroll-list">
+      <div ref="tagListRef" class="scroll-list" @scroll="saveListScrollPosition">
         <button
           v-for="tag in filteredTags"
           :key="tag.id"

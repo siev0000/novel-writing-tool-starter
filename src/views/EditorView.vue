@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
 import { useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
+import CharacterReferenceModal from '../components/CharacterReferenceModal.vue';
 import TextField from '../components/TextField.vue';
 import { dataStore, downloadBlob, ensureEpisodeChapters, getProjectNavigatorSelection, setProjectNavigatorSelection, transientStore } from '../store/data';
 import { createId, nowIso } from '../utils/id';
@@ -149,21 +150,6 @@ const selectedSceneCharacters = computed(() =>
     .map((id) => characters.value.find((character) => character.id === id))
     .filter((character): character is Character => Boolean(character))
 );
-const referenceCharacter = computed(() =>
-  characters.value.find((character) => character.id === referenceCharacterId.value)
-);
-const referenceCharacterDetails = computed(() => {
-  const character = referenceCharacter.value;
-  if (!character) return [];
-  return [
-    { label: '物語上の役割', value: character.role },
-    { label: '所属', value: character.affiliation },
-    { label: '性格', value: character.personality },
-    { label: '外見', value: character.appearance },
-    { label: '目的', value: character.goal },
-    { label: 'メモ', value: character.memo },
-  ].filter((item) => item.value?.trim());
-});
 const hasText = (value?: string | null) => Boolean(value?.trim());
 const hasItems = (items?: string[]) => Boolean(items?.length);
 
@@ -1188,27 +1174,12 @@ function handleDocumentClick(event: MouseEvent) {
         </div>
       </Teleport>
 
-      <Teleport to="body">
-        <div v-if="referenceCharacter" class="modal-backdrop">
-          <section class="modal-panel character-reference-modal" role="dialog" aria-modal="true" :aria-label="`${referenceCharacter.name}の説明`" @click.stop>
-            <header class="modal-header">
-              <h2>{{ referenceCharacter.name }}</h2>
-              <button type="button" class="secondary compact-button" @click="referenceCharacterId = ''">閉じる</button>
-            </header>
-            <p v-if="referenceCharacter.ruby" class="ruby-text">{{ referenceCharacter.ruby }}</p>
-            <div v-if="referenceCharacterDetails.length" class="info-list">
-              <div v-for="detail in referenceCharacterDetails" :key="detail.label" class="info-row">
-                <span>{{ detail.label }}</span>
-                <p>{{ detail.value }}</p>
-              </div>
-            </div>
-            <p v-else class="empty-state">表示できる説明はまだありません。</p>
-            <div class="button-row modal-footer">
-              <button type="button" class="secondary" @click="referenceCharacterId = ''">閉じる</button>
-            </div>
-          </section>
-        </div>
-      </Teleport>
+      <CharacterReferenceModal
+        v-if="referenceCharacterId"
+        :project-id="projectId"
+        :character-id="referenceCharacterId"
+        @close="referenceCharacterId = ''"
+      />
     </section>
 
     <section v-else class="card empty-state">本文を書く話かシーンを選択してください。</section>
