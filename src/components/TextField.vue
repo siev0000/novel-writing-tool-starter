@@ -9,6 +9,7 @@ const props = defineProps<{
   type?: ProfileFieldInputType;
   placeholder?: string;
   options?: string[];
+  maxRows?: number;
 }>();
 defineEmits<{ 'update:modelValue': [value: string] }>();
 
@@ -23,7 +24,7 @@ const textareaRows = computed(() => {
 });
 
 function syncTextareaHeight() {
-  resizeTextarea(textareaRef.value);
+  resizeTextarea(textareaRef.value, props.maxRows ?? 15);
 }
 
 function scheduleTextareaHeightSync() {

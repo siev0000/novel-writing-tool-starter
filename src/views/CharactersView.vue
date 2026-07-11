@@ -87,6 +87,7 @@ const nameModalOpen = ref(false);
 const nameError = ref('');
 const pendingCreateCharacter = ref(false);
 const relationshipModalOpen = ref(false);
+const relationshipEditTargetId = ref('');
 const relationshipDeleteModalOpen = ref(false);
 const deleteTargetModalOpen = ref(false);
 const isEditing = ref(false);
@@ -176,7 +177,7 @@ const relationshipDrafts = computed(() => {
     if (!existing) {
       return {
         targetId: character.id,
-        relationType: '関係性未設定',
+        relationType: '',
         impressionFromCurrent: '',
         impressionToCurrent: '',
       };
@@ -210,8 +211,9 @@ const selectedRelationshipSummaries = computed(() => {
       const impression = relationship.characterAId === currentCharacter.id ? relationship.emotionAtoB : relationship.emotionBtoA;
       return {
         id: relationship.id,
+        targetId,
         name: targetCharacter?.name || '名前未設定',
-        relationType: relationship.relationType || '関係性未設定',
+        relationType: relationship.relationType || '',
         impression,
       };
     });
@@ -452,8 +454,17 @@ function updateTagFilter(item: SelectionModalItem) {
   tagFilterModalOpen.value = false;
 }
 
-function openRelationshipModal() {
+function openRelationshipModal(targetId = '') {
   if (!selected.value || relationshipCharacterOptions.value.length < 1) return;
+  if (targetId) {
+    relationshipEditTargetId.value = targetId;
+  } else {
+    const existingTargetIds = new Set(selectedRelationshipSummaries.value.map((item) => item.targetId));
+    relationshipEditTargetId.value =
+      relationshipCharacterOptions.value.find((character) => !existingTargetIds.has(character.id))?.id
+      ?? relationshipCharacterOptions.value[0]?.id
+      ?? '';
+  }
   relationshipModalOpen.value = true;
 }
 
@@ -466,15 +477,16 @@ function saveRelationship(targetId: string, relationType: string, impressionFrom
 
   if (existing) {
     if (existing.characterAId === selected.value.id) {
-      existing.relationType = relationType.trim() || '関係性未設定';
+      existing.relationType = relationType.trim();
       existing.emotionAtoB = impressionFromCurrent;
       existing.emotionBtoA = impressionToCurrent;
     } else {
-      existing.relationType = relationType.trim() || '関係性未設定';
+      existing.relationType = relationType.trim();
       existing.emotionBtoA = impressionFromCurrent;
       existing.emotionAtoB = impressionToCurrent;
     }
     relationshipModalOpen.value = false;
+    relationshipEditTargetId.value = '';
     return;
   }
 
@@ -483,7 +495,7 @@ function saveRelationship(targetId: string, relationType: string, impressionFrom
     projectId,
     characterAId: selected.value.id,
     characterBId: targetId,
-    relationType: relationType.trim() || '関係性未設定',
+    relationType: relationType.trim(),
     emotionAtoB: impressionFromCurrent,
     emotionBtoA: impressionToCurrent,
     publicRelation: '',
@@ -492,8 +504,13 @@ function saveRelationship(targetId: string, relationType: string, impressionFrom
     tagIds: [],
     memo: '',
   };
-  dataStore.relationships.unshift(relationship);
+  dataStore.relationships.push(relationship);
   relationshipModalOpen.value = false;
+  relationshipEditTargetId.value = '';
+}
+
+function editRelationship(targetId: string) {
+  openRelationshipModal(targetId);
 }
 
 function requestDeleteRelationship() {
@@ -693,21 +710,32 @@ function toggleProfileSection(section: string) {
             />
           </div>
         </section>
-        <section class="inline-panel relationship-panel">
-          <div class="panel-heading">
-            <h3>相関</h3>
-            <div class="button-row">
-              <button type="button" class="secondary" :disabled="relationshipCharacterOptions.length < 1" @click="openRelationshipModal">追加</button>
+        <section class="profile-section relationship-section">
+          <div class="section-toggle-header section-toggle-header-with-action">
+            <strong>相関</strong>
+            <div class="button-row section-header-action">
+              <button type="button" class="secondary" :disabled="relationshipCharacterOptions.length < 1" @click="openRelationshipModal()">追加</button>
               <button type="button" class="secondary" :disabled="!selectedRelationshipSummaries.length" @click="requestDeleteRelationship">削除</button>
             </div>
           </div>
+          <div class="profile-section-body relationship-panel">
           <div v-if="selectedRelationshipSummaries.length" class="relationship-summary-list">
-            <article v-for="item in selectedRelationshipSummaries" :key="item.id" class="relationship-summary-item">
-              <strong>{{ item.name }} <span>{{ item.relationType }}</span></strong>
+            <article
+              v-for="item in selectedRelationshipSummaries"
+              :key="item.id"
+              class="relationship-summary-item"
+              role="button"
+              tabindex="0"
+              @click="editRelationship(item.targetId)"
+              @keydown.enter.prevent="editRelationship(item.targetId)"
+              @keydown.space.prevent="editRelationship(item.targetId)"
+            >
+              <strong>{{ item.name }} <span v-if="item.relationType">{{ item.relationType }}</span></strong>
               <p v-if="item.impression">{{ item.impression }}</p>
             </article>
           </div>
           <p v-else class="hint-text">未設定</p>
+          </div>
         </section>
       </div>
 
@@ -752,7 +780,8 @@ function toggleProfileSection(section: string) {
         :open="relationshipModalOpen"
         :characters="relationshipCharacterOptions"
         :relations="relationshipDrafts"
-        @close="relationshipModalOpen = false"
+        :initial-target-id="relationshipEditTargetId"
+        @close="relationshipModalOpen = false; relationshipEditTargetId = ''"
         @save="saveRelationship"
       />
       <ColorPaletteModal

@@ -18,6 +18,7 @@ const props = defineProps<{
   open: boolean;
   characters: CharacterOption[];
   relations?: RelationshipDraft[];
+  initialTargetId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -34,21 +35,21 @@ const impressionToTextarea = ref<HTMLTextAreaElement | null>(null);
 
 function applyDraft(target: string) {
   const draft = props.relations?.find((item) => item.targetId === target);
-  relationType.value = draft?.relationType ?? '関係性未設定';
+  relationType.value = draft?.relationType ?? '';
   impressionFromCurrent.value = draft?.impressionFromCurrent ?? '';
   impressionToCurrent.value = draft?.impressionToCurrent ?? '';
 }
 
 function syncTextareas() {
-  resizeTextarea(impressionFromTextarea.value, 15);
-  resizeTextarea(impressionToTextarea.value, 15);
+  resizeTextarea(impressionFromTextarea.value, 6);
+  resizeTextarea(impressionToTextarea.value, 6);
 }
 
 watch(
   () => props.open,
   async (open) => {
     if (!open) return;
-    targetId.value = props.characters[0]?.id ?? '';
+    targetId.value = props.initialTargetId || props.characters[0]?.id || '';
     applyDraft(targetId.value);
     await nextTick();
     syncTextareas();
@@ -107,13 +108,13 @@ function save() {
         </label>
 
         <label class="field">
-          <span>その人物への印象</span>
-          <textarea ref="impressionFromTextarea" v-model="impressionFromCurrent" class="auto-textarea" rows="4" placeholder="こちらから相手への印象や感情" />
+          <span>こちらから</span>
+          <textarea ref="impressionFromTextarea" v-model="impressionFromCurrent" class="auto-textarea" rows="4" placeholder="こちらからの印象を記載" />
         </label>
 
         <label class="field">
-          <span>相手からの印象</span>
-          <textarea ref="impressionToTextarea" v-model="impressionToCurrent" class="auto-textarea" rows="4" placeholder="相手からこちらへの印象や感情" />
+          <span>相手から</span>
+          <textarea ref="impressionToTextarea" v-model="impressionToCurrent" class="auto-textarea" rows="4" placeholder="相手からの印象を記載" />
         </label>
 
         <div class="button-row modal-footer">
