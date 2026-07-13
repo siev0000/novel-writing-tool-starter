@@ -8,6 +8,8 @@ import AppHeader from '../components/AppHeader.vue';
 import CharacterNameModal from '../components/CharacterNameModal.vue';
 import SelectionModal from '../components/SelectionModal.vue';
 import type { SelectionModalItem } from '../components/SelectionModal.vue';
+import TagTypeModal from '../components/TagTypeModal.vue';
+import type { TagTypeModalItem } from '../components/TagTypeModal.vue';
 import { getColorDisplayLabel, getColorPaletteItem } from '../constants/colorPalette';
 import TextField from '../components/TextField.vue';
 import {
@@ -44,6 +46,7 @@ const statusModalOpen = ref(false);
 const typeFilterModalOpen = ref(false);
 const categoryFilterModalOpen = ref(false);
 const categorySelectModalOpen = ref(false);
+const classificationDeleteTarget = ref<{ kind: 'tag' | 'term'; item: TagTypeModalItem } | null>(null);
 const relatedTagsModalOpen = ref(false);
 const isEditing = ref(false);
 const nameModalOpen = ref(false);
@@ -170,13 +173,15 @@ const project = computed(() => getProject(projectId));
 
 const tags = computed(() => dataStore.tags.filter((tag) => tag.projectId === projectId && tag.type !== 'ジャンルタグ'));
 const termFilterCategories = computed(() => {
+  const configuredCategories = project.value?.customTermCategories ?? [];
   const usedCategories = Array.from(new Set(
     tags.value
       .filter((tag) => tag.source !== 'default')
       .map((tag) => tag.category || 'その他')
   ));
-  const ordered = termCategories.filter((category) => usedCategories.includes(category));
-  const extra = usedCategories.filter((category) => !termCategories.includes(category));
+  const allCategories = Array.from(new Set([...configuredCategories, ...usedCategories]));
+  const ordered = termCategories.filter((category) => allCategories.includes(category));
+  const extra = allCategories.filter((category) => !termCategories.includes(category));
   return [...ordered, ...extra];
 });
 const termCategoryFilterItems = computed<SelectionModalItem[]>(() => [
@@ -200,11 +205,46 @@ const tagTypeItems = computed<SelectionModalItem[]>(() => {
   ];
 });
 const tagTypes = computed(() => ['すべて', ...Array.from(new Set(
-  tags.value
-    .filter((tag) => tag.source === 'default')
-    .map((tag) => tag.type)
+  tagTypeItems.value
+    .map((item) => item.id)
     .filter((type) => type && type !== '用語')
 ))]);
+const tagTypeManagerItems = computed<TagTypeModalItem[]>(() => {
+  const usedTypes = new Set(tags.value.map((tag) => tag.type));
+  const customTypes = project.value?.customTagTypes ?? [];
+  return [
+    { id: 'すべて', label: 'すべて', category: '表示' },
+    ...builtinTagTypes.map((type) => ({ id: type, label: getDisplayTypeLabel(type), category: '基本分類' })),
+    ...tagTypeItems.value
+      .filter((item) => !builtinTagTypes.includes(item.id as typeof builtinTagTypes[number]))
+      .map((item) => ({
+        id: item.id,
+        label: item.label,
+        category: '追加分類',
+        removable: customTypes.includes(item.id) && !usedTypes.has(item.id),
+      })),
+  ];
+});
+const termCategoryManagerItems = computed<TagTypeModalItem[]>(() => {
+  const usedCategories = new Set(
+    tags.value
+      .filter((tag) => tag.source !== 'default')
+      .map((tag) => tag.category || 'その他')
+  );
+  const configuredCategories = project.value?.customTermCategories ?? [];
+  return [
+    { id: 'すべて', label: 'すべて', category: '表示' },
+    ...termCategories.map((category) => ({ id: category, label: category, category: '基本分類' })),
+    ...termFilterCategories.value
+      .filter((category) => !termCategories.includes(category))
+      .map((category) => ({
+        id: category,
+        label: category,
+        category: '追加分類',
+        removable: configuredCategories.includes(category) && !usedCategories.has(category),
+      })),
+  ];
+});
 const tagTypeFilterItems = computed<SelectionModalItem[]>(() => [
   { id: 'すべて', label: 'すべて', category: '分類' },
   ...tagTypes.value
@@ -467,6 +507,63 @@ function updateTypeFilter(item: SelectionModalItem) {
   typeFilterModalOpen.value = false;
 }
 
+function openClassificationManager(mode: 'tag' | 'term') {
+  if (mode === 'tag') typeFilterModalOpen.value = true;
+  else categoryFilterModalOpen.value = true;
+}
+
+function addTagClassification(label: string) {
+  const value = label.trim();
+  if (!value || builtinTagTypes.includes(value as typeof builtinTagTypes[number])) return;
+  const projectData = project.value;
+  if (!projectData) return;
+  projectData.customTagTypes ??= [];
+  if (!projectData.customTagTypes.includes(value)) projectData.customTagTypes.push(value);
+  projectData.updatedAt = nowIso();
+}
+
+function removeTagClassification(item: TagTypeModalItem) {
+  const projectData = project.value;
+  if (!projectData || tags.value.some((tag) => tag.type === item.id)) return;
+  projectData.customTagTypes = (projectData.customTagTypes ?? []).filter((type) => type !== item.id);
+  if (typeFilter.value === item.id) typeFilter.value = 'すべて';
+  projectData.updatedAt = nowIso();
+}
+
+function requestRemoveTagClassification(item: TagTypeModalItem) {
+  classificationDeleteTarget.value = { kind: 'tag', item };
+}
+
+function addTermClassification(label: string) {
+  const value = label.trim();
+  if (!value || termCategories.includes(value)) return;
+  const projectData = project.value;
+  if (!projectData) return;
+  projectData.customTermCategories ??= [];
+  if (!projectData.customTermCategories.includes(value)) projectData.customTermCategories.push(value);
+  projectData.updatedAt = nowIso();
+}
+
+function removeTermClassification(item: TagTypeModalItem) {
+  const projectData = project.value;
+  if (!projectData || tags.value.some((tag) => tag.source !== 'default' && (tag.category || 'その他') === item.id)) return;
+  projectData.customTermCategories = (projectData.customTermCategories ?? []).filter((category) => category !== item.id);
+  if (categoryFilter.value === item.id) categoryFilter.value = 'すべて';
+  projectData.updatedAt = nowIso();
+}
+
+function requestRemoveTermClassification(item: TagTypeModalItem) {
+  classificationDeleteTarget.value = { kind: 'term', item };
+}
+
+function confirmRemoveClassification() {
+  const target = classificationDeleteTarget.value;
+  if (!target) return;
+  if (target.kind === 'tag') removeTagClassification(target.item);
+  else removeTermClassification(target.item);
+  classificationDeleteTarget.value = null;
+}
+
 const classificationSelectItems = computed<SelectionModalItem[]>(() => {
   if (!selected.value) return [];
   return (selected.value.type === '用語' || selected.value.source !== 'default')
@@ -688,7 +785,7 @@ function openTagCharacterSearch() {
           v-if="isTermListMode"
           type="button"
           class="list-button tag-filter-button"
-          @click="categoryFilterModalOpen = true"
+          @click="openClassificationManager('term')"
         >
           <span class="tag-filter-label">分類</span>
         </button>
@@ -696,7 +793,7 @@ function openTagCharacterSearch() {
           v-else
           type="button"
           class="list-button tag-filter-button"
-          @click="typeFilterModalOpen = true"
+          @click="openClassificationManager('tag')"
         >
           <span class="tag-filter-label">分類</span>
         </button>
@@ -931,22 +1028,35 @@ function openTagCharacterSearch() {
       @select="updateTagColor"
     />
 
-    <SelectionModal
+    <TagTypeModal
       :open="typeFilterModalOpen"
       title="タグ分類"
-      :items="tagTypeFilterItems"
+      :items="tagTypeManagerItems"
       :selected-id="typeFilter"
       @close="typeFilterModalOpen = false"
-      @select="updateTypeFilter"
+      @select="item => updateTypeFilter(item)"
+      @add="addTagClassification"
+      @remove="requestRemoveTagClassification"
     />
 
-    <SelectionModal
+    <TagTypeModal
       :open="categoryFilterModalOpen"
       title="用語分類"
-      :items="termCategoryFilterItems"
+      :items="termCategoryManagerItems"
       :selected-id="categoryFilter"
       @close="categoryFilterModalOpen = false"
-      @select="updateCategoryFilter"
+      @select="item => updateCategoryFilter(item)"
+      @add="addTermClassification"
+      @remove="requestRemoveTermClassification"
+    />
+
+    <ConfirmModal
+      :open="Boolean(classificationDeleteTarget)"
+      title="分類を削除"
+      :message="`「${classificationDeleteTarget?.item.label || ''}」を削除します。`"
+      confirm-label="分類を削除"
+      @close="classificationDeleteTarget = null"
+      @confirm="confirmRemoveClassification"
     />
 
     <SelectionModal

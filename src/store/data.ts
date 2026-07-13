@@ -544,6 +544,7 @@ export function createProject(title = '新しい作品'): NovelProject {
     genreTagId: undefined,
     genreTagIds: [],
     customTagTypes: [],
+    customTermCategories: [],
     characterProfileFields: [],
     summary: '',
     memo: '',

@@ -17,6 +17,7 @@ export interface NovelProject {
   genreTagId?: ID;
   genreTagIds?: ID[];
   customTagTypes?: string[];
+  customTermCategories?: string[];
   characterProfileFields?: CharacterProfileField[];
   summary: string;
   memo: string;
